@@ -12,12 +12,16 @@ function config(level) {
   return {
     level: level,
     rows: Math.min(3 + Math.floor((level - 1) / 2), 7),
-    ballSpeed: Math.min(170 + level * 13, 400),
+    /* La pallina deve arrivare a superare la racchetta: finché resta più
+       lenta, chi la insegue bene non sbaglia mai e i livelli alti non sfidano
+       nessuno. Oltre il livello 10 va più veloce di quanto tu possa scorrere. */
+    ballSpeed: Math.min(170 + level * 18, 560),
     paddleW: Math.max(52, 92 - level * 2.5),
     armored: level >= 5 ? Math.min(0.12 + (level - 5) * 0.07, 0.55) : 0, // quota di mattoni a 2 colpi
     extraLifeEvery: 3,
     brickPoints: 10 * level,
-    paddleMalus: 5 * level   // costo di ogni ritorno sulla racchetta
+    paddleMalus: 5 * level,  // costo di ogni ritorno sulla racchetta
+    handSpeed: Math.min(400 + level * 10, 520)  // quanto scorre la racchetta
   };
 }
 
@@ -27,10 +31,10 @@ TG.registry.register({
   icon: '🧱',
   tagline: 'Sfonda il muro. Tre vite, e non si ricaricano spesso.',
   scoreLabel: 'Punti',
-  controls: 'lr',
-  actionLabel: 'LANCIA',
+  controls: 'lr-big',
   viewport: { w: 360, h: 480 },
-  howto: '<b>Comandi:</b> trascina il dito, frecce ←/→ o pad a schermo. ' +
+  howto: '<b>Comandi:</b> i due tasti ◀ ▶ sotto il campo, oppure le frecce ←/→. ' +
+    'La pallina parte da sola dopo un secondo, o subito se muovi la racchetta. ' +
     'Le vite valgono per tutta la partita: ne guadagni una ogni 3 livelli. ' +
     'I mattoni scuri reggono due colpi. ' +
     '<b>Combo:</b> ogni mattone rotto senza tornare sulla racchetta vale di più ' +
@@ -49,7 +53,7 @@ TG.registry.register({
     var PADDLE_Y = H - 30, PADDLE_H = 10, BALL_R = 5;
     var TOP = 46, BRICK_H = 18, GAP = 4;
 
-    var cfg, paddle, ball, bricks, lives, launched, blink, stall, combo, floaters;
+    var cfg, paddle, ball, bricks, lives, launched, blink, stall, combo, floaters, autoLaunch;
 
     /* Riporta la pallina alla velocità del livello evitando traiettorie
        quasi orizzontali, che produrrebbero scambi infiniti. */
@@ -86,6 +90,7 @@ TG.registry.register({
 
     function resetBall() {
       launched = false;
+      autoLaunch = 1.2;   // niente pulsante: parte da sola
       ball = { x: paddle.x, y: PADDLE_Y - BALL_R - 1, vx: 0, vy: 0, speed: cfg.ballSpeed };
     }
 
@@ -189,17 +194,17 @@ TG.registry.register({
         if (floaters[f].t <= 0) floaters.splice(f, 1);
       }
 
-      var p = api.input.pointer;
-      if (p.down) {
-        paddle.x = api.util.lerp(paddle.x, p.x, Math.min(1, dt * 20));
-        if (!launched && p.moved === false) launch();
-      }
-      var speed = 340 * dt;
+      /* Solo tasti, come nel pong: col dito sullo schermo la racchetta
+         seguirebbe il polpastrello e mirare non sarebbe più una scelta. */
+      var speed = cfg.handSpeed * dt;
+      var moving = api.input.isDown('left') || api.input.isDown('right');
       if (api.input.isDown('left')) paddle.x -= speed;
       if (api.input.isDown('right')) paddle.x += speed;
       paddle.x = api.util.clamp(paddle.x, paddle.w / 2, W - paddle.w / 2);
 
       if (!launched) {
+        autoLaunch -= dt;
+        if (autoLaunch <= 0 || moving) launch();
         ball.x = paddle.x;
         ball.y = PADDLE_Y - BALL_R - 1;
         return;
@@ -300,7 +305,7 @@ TG.registry.register({
       if (!launched) {
         ctx.textAlign = 'center';
         ctx.fillStyle = 'rgba(230,237,243,0.75)';
-        ctx.fillText('tocca o spazio per lanciare', W / 2, PADDLE_Y - 24);
+        ctx.fillText('parte fra ' + Math.max(0, autoLaunch).toFixed(1) + 's', W / 2, PADDLE_Y - 24);
       }
     }
 

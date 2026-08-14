@@ -7,24 +7,26 @@
 'use strict';
 
 var TARGET = 3;      // gol per vincere il livello: partite brevi, da cinque minuti
-var STALL_LIMIT = 4; // s di disco fermo prima che il possesso cambi
+var STALL_LIMIT = 3; // s di disco fermo prima che il possesso cambi
 var MY_GOAL = 140;   // larghezza della tua porta, fissa
+var GRAB_LIFT = 44;  // px: quanto il mazzuolo sta sopra il dito, per non coprirlo
+var MY_SPEED = 300;  // px/s del mazzuolo umano da tastiera: riferimento per la CPU
 
 function config(level) {
   return {
     level: level,
-    cpuSpeed: Math.min(80 + level * 24, 360),
+    cpuSpeed: MY_SPEED * TG.util.opponentSpeedRatio(level),
     cpuLag: Math.max(0.02, 0.22 - level * 0.02),   // s fra due decisioni
-    cpuError: Math.max(2, 26 - level * 2.5),       // px di imprecisione
-    cpuAggro: Math.min(0.35 + level * 0.07, 0.95), // quanto spesso attacca
+    cpuError: Math.max(2, 34 - level * 3),         // px di imprecisione
+    cpuAggro: Math.min(0.4 + level * 0.07, 0.95),  // quanto spesso attacca
     /* Quanto bene il portiere avversario segue il disco: sotto 1 resta
        incollato al centro e lascia scoperti gli angoli. È la leva che rende
        i primi livelli davvero abbordabili. */
-    cpuGuard: Math.min(0.45 + level * 0.07, 1),
+    cpuGuard: Math.min(0.35 + level * 0.07, 1),
     /* Dopo aver tirato la CPU ci mette un attimo a rientrare: è la finestra
        in cui puoi ripartire in contropiede. Ai livelli alti sparisce. */
-    cpuRecover: Math.max(0.1, 0.9 - level * 0.09),
-    goalCpu: Math.max(100, 190 - level * 9),       // larghezza porta avversaria
+    cpuRecover: Math.max(0.1, 1.15 - level * 0.1),
+    goalCpu: Math.max(100, 210 - level * 10),      // larghezza porta avversaria
     malletR: Math.max(13, 19 - level * 0.5),       // il tuo mazzuolo
     cpuR: Math.min(17 + level * 0.7, 25),          // quello della CPU, che cresce
     puckMax: Math.min(520 + level * 22, 820)
@@ -37,16 +39,19 @@ TG.registry.register({
   icon: '🏒',
   tagline: 'Disco sul tavolo ad aria: cinque gol prima della CPU.',
   scoreLabel: 'Punti',
-  controls: 'dpad',
-  viewport: { w: 360, h: 520 },
+  controls: 'none',
+  viewport: { w: 360, h: 600 },
   howto: '<b>Comandi:</b> trascina il dito nella tua metà campo, oppure frecce/WASD. ' +
+    'Il mazzuolo resta sopra il dito, così lo vedi mentre giochi: ' +
+    'lo prendi dove sta, non salta sotto il polpastrello. ' +
     'Il mazzuolo non può superare la linea di metà campo. ' +
     'Colpisci il disco muovendo: più veloce vai, più forte parte. ' +
-    'Se il disco resta fermo troppo a lungo si torna in rimessa al centro.',
+    'Se il disco resta fermo troppo a lungo il possesso passa all\'avversario.',
 
   levelInfo: function (level) {
     var c = config(level);
-    return 'Livello ' + level + ': CPU a ' + Math.round(c.cpuSpeed) + ' px/s, ' +
+    return 'Livello ' + level + ': CPU al ' +
+      Math.round(TG.util.opponentSpeedRatio(level) * 100) + '% della tua velocità, ' +
       'porta avversaria ' + Math.round(c.goalCpu) + ' px';
   },
 
@@ -58,6 +63,7 @@ TG.registry.register({
 
     var cfg, puck, me, cpu, myGoals, cpuGoals, faceoff, stall, flashGoal;
     var cpuTimer, cpuTarget, cpuMode, cpuAim, stallRef, cpuRecoverLeft;
+    var grab = null;   // scarto fra dito e mazzuolo durante il trascinamento
 
     /* ---------- utilità ---------- */
 
@@ -118,10 +124,22 @@ TG.registry.register({
       var px = me.x, py = me.y;
       var p = api.input.pointer;
       if (p.down) {
-        me.x = api.util.lerp(me.x, p.x, Math.min(1, dt * 26));
-        me.y = api.util.lerp(me.y, p.y, Math.min(1, dt * 26));
+        /* Trascinamento relativo: al primo tocco si memorizza dove sta il
+           mazzuolo rispetto al dito e quello scarto si mantiene. Il mazzuolo
+           non salta sotto il polpastrello e resta visibile: sopra il dito di
+           almeno GRAB_LIFT px, che è quanto serve per non coprirlo. */
+        if (!grab) {
+          grab = {
+            dx: api.util.clamp(me.x - p.x, -70, 70),
+            dy: Math.min(me.y - p.y, -GRAB_LIFT)
+          };
+        }
+        me.x = api.util.lerp(me.x, p.x + grab.dx, Math.min(1, dt * 26));
+        me.y = api.util.lerp(me.y, p.y + grab.dy, Math.min(1, dt * 26));
+      } else {
+        grab = null;
       }
-      var step = 300 * dt;
+      var step = MY_SPEED * dt;
       if (api.input.isDown('left')) me.x -= step;
       if (api.input.isDown('right')) me.x += step;
       if (api.input.isDown('up')) me.y -= step;
@@ -420,6 +438,20 @@ TG.registry.register({
       ctx.fillText(cpuGoals, W / 2, MID - 60);
       ctx.fillText(myGoals, W / 2, MID + 96);
 
+      // dove sta il dito, così si capisce il legame con il mazzuolo
+      var p = api.input.pointer;
+      if (grab && p.down) {
+        ctx.strokeStyle = 'rgba(74,222,128,0.25)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(me.x, me.y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
       drawMallet(ctx, cpu, '#f87171');
       drawMallet(ctx, me, '#4ade80');
 
@@ -465,6 +497,7 @@ TG.registry.register({
         cpu: { x: Math.round(cpu.x), y: Math.round(cpu.y) },
         me: { x: Math.round(me.x), y: Math.round(me.y) },
         goalCpu: cfg.goalCpu,
+        grabLift: GRAB_LIFT,
         stall: Math.round(stall * 10) / 10
       };
     }

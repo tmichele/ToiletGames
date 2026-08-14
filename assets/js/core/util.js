@@ -33,6 +33,15 @@ TG.util = (function () {
 
   function lerp(a, b, t) { return a + (b - a) * t; }
 
+  /* Regola della suite per gli avversari simulati: al primo livello si muovono
+     poco sotto la velocità del giocatore, intorno al terzo la pareggiano e da
+     lì in poi la superano. Ogni gioco moltiplica questo fattore per la velocità
+     del proprio giocatore, così "quanto è veloce la CPU" significa la stessa
+     cosa ovunque. */
+  function opponentSpeedRatio(level) {
+    return Math.min(0.9 + (level - 1) * 0.06, 1.35);
+  }
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -71,6 +80,7 @@ TG.util = (function () {
     pick: pick,
     shuffle: shuffle,
     lerp: lerp,
+    opponentSpeedRatio: opponentSpeedRatio,
     escapeHtml: escapeHtml,
     formatDate: formatDate,
     circleRectHit: circleRectHit,

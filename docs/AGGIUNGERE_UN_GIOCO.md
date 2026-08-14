@@ -94,7 +94,7 @@ statistiche.
 | `api.levelComplete({bonus, message})` | livello superato: il motore mostra il riepilogo e passa al successivo |
 | `api.gameOver({message})` | partita finita: il motore salva il risultato in classifica |
 | `api.input` | `take()`, `takeTap()`, `takeDigit()`, `isDown(azione)`, `pointer` |
-| `api.util` | `clamp`, `randInt`, `randFloat`, `pick`, `shuffle`, `lerp`, `circleRectHit`, `roundRect` |
+| `api.util` | `clamp`, `randInt`, `randFloat`, `pick`, `shuffle`, `lerp`, `circleRectHit`, `roundRect`, `opponentSpeedRatio` |
 | `api.sfx` | `click`, `pick`, `hit`, `bounce`, `fail`, `tone(freq, durata, tipo, volume)` |
 
 Il gioco **non** deve gestire pausa, ridimensionamento, ciclo di rendering,
@@ -107,6 +107,23 @@ restituisce i parametri, `start(level)` li applica, `levelComplete()` fa salire 
 livello. Il punteggio **non** si azzera fra un livello e l'altro, quindi conviene
 scalare i punti con il livello (`10 * cfg.level`) e assegnare un bonus di fine
 livello: così la classifica premia chi arriva più in fondo.
+
+## Avversari simulati
+
+Se il gioco ha una CPU, la sua velocità si ricava da quella del giocatore con
+`api.util.opponentSpeedRatio(level)`: parte al 90%, pareggia intorno al terzo
+livello e arriva al 135%. Così «la CPU è veloce» significa la stessa cosa in
+tutta la suite, e la difficoltà dei livelli alti non si riduce a una corsa.
+
+Gli altri parametri (quanto legge bene la traiettoria, quanto mira lontano dal
+giocatore, quanto tarda a rientrare) sono le leve vere. Due regole imparate
+sbagliando:
+
+- l'errore di mira va sorteggiato **una volta per scambio**, non a ogni
+  correzione: rifacendolo di continuo la media lo annulla e l'avversario diventa
+  infallibile;
+- un avversario che mira oltre il proprio margine di errore sbaglia da solo:
+  la mira deve usare solo lo spazio che resta dopo l'imprecisione.
 
 ## Input
 

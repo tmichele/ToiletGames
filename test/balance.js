@@ -97,6 +97,10 @@ function playMatch(def, util, level, bot) {
    speed:    quanto in fretta muove la mano */
 
 const PROFILES = [
+  /* Il primo profilo non tocca niente: serve a verificare un'invariante, cioè
+     che stare fermi faccia perdere. Se questa colonna non è a zero il gioco si
+     vince senza giocare, ed è un difetto grave quanto un livello impossibile. */
+  { name: 'fermo', idle: true },
   { name: 'scarso', reaction: 0.40, error: 46, speed: 240 },
   { name: 'medio', reaction: 0.22, error: 22, speed: 340 },
   { name: 'bravo', reaction: 0.10, error: 8, speed: 480 }
@@ -141,14 +145,15 @@ const BOTS = {
     };
   },
 
+  // anche i mattoni si giocano a tasti: il bot li tiene premuti
   mattoni: (profile) => (api, game) => {
-    const hand = makeHand(api, profile, api.width / 2, api.height - 30);
     const delay = delayLine(profile);
     const err = (Math.random() * 2 - 1) * profile.error;
     return function (s, dt) {
-      if (!s.launched) api.input.press('action');   // rilancia dopo ogni vita
-      const seen = delay(s.ball.x, dt);
-      hand(seen + err, api.height - 30, dt);
+      const target = delay(s.ball.x, dt) + err;
+      const dx = target - s.paddle.x;
+      api.input.held.left = dx < -6;
+      api.input.held.right = dx > 6;
     };
   },
 
@@ -156,7 +161,10 @@ const BOTS = {
      passa attraverso verso la porta avversaria; altrimenti torna a coprire. */
   hockey: (profile) => (api, game) => {
     const mid = api.height / 2;
-    const hand = makeHand(api, profile, api.width / 2, api.height - 70);
+    // il mazzuolo sta sopra il dito: il bot punta più in basso per compensare
+    const lift = (game.state().grabLift || 0);
+    const hand = (tx, ty, dt) => rawHand(tx, ty + lift, dt);
+    const rawHand = makeHand(api, profile, api.width / 2, api.height - 70 + lift);
     const delay = delayLine(profile);
     const err = (Math.random() * 2 - 1) * profile.error;
     let charging = false;
@@ -207,8 +215,9 @@ function main() {
       let seconds = 0;
       PROFILES.forEach((profile) => {
         let wins = 0;
+        const maker = profile.idle ? () => () => () => {} : BOTS[id];
         for (let i = 0; i < MATCHES; i++) {
-          const r = playMatch(def, util, level, BOTS[id](profile));
+          const r = playMatch(def, util, level, maker(profile));
           if (r.win) wins++;
           if (r.timeout) timeouts++;
           seconds += r.seconds;
@@ -224,9 +233,10 @@ function main() {
     }
   });
 
-  console.log('\nLettura: al livello 1 un giocatore medio dovrebbe vincere quasi sempre,');
-  console.log('e la percentuale deve calare salendo di livello. Le "partite infinite"');
-  console.log('sono situazioni di stallo: vanno corrette, non tollerate.');
+  console.log('\nLettura: la colonna "fermo" deve stare a 0% ovunque (chi non gioca');
+  console.log('non vince), al livello 1 un giocatore medio dovrebbe vincere quasi');
+  console.log('sempre, e la percentuale deve calare salendo di livello. Le "partite');
+  console.log('infinite" sono stalli: vanno corretti, non tollerati.');
 }
 
 main();

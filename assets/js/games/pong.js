@@ -9,21 +9,26 @@ var TARGET = 5; // punti per vincere il livello
 var SHRINK_FLOOR = 34;  // px: sotto questa misura le racchette non scendono
 
 function config(level) {
-  var npcW = Math.min(46 + level * 4, 84);
+  var npcW = Math.min(56 + level * 3, 88);
+  var handSpeed = Math.min(400 + level * 10, 520);
   /* L'errore di lettura va misurato in "mezze racchette": se scende sotto la
      metà della racchetta, la CPU para comunque e diventa infallibile di colpo.
      Tenendolo sopra 1 l'avversario sbaglia sempre qualcosa, e la difficoltà
      arriva da velocità e prontezza invece che dall'infallibilità. */
-  var errFactor = Math.max(1.1, 2.6 - level * 0.18);
+  var errFactor = Math.max(1.0, 1.35 - level * 0.035);
   return {
     level: level,
     ballSpeed: Math.min(180 + level * 13, 380),
-    npcSpeed: Math.min(110 + level * 24, 350),
+    npcSpeed: handSpeed * TG.util.opponentSpeedRatio(level),
     npcW: npcW,
     npcError: npcW / 2 * errFactor,
     npcLag: Math.max(0.06, 0.40 - level * 0.035), // s tra una correzione e l'altra
+    /* Quanto la CPU cerca di rimandare la palla lontano da te invece di
+       ribatterla e basta: è così che punisce chi resta fermo, senza bisogno
+       di renderla infallibile. */
+    npcAim: Math.min(0.3 + level * 0.07, 0.85),
     paddleW: Math.max(56, 92 - level * 2.5),      // la tua
-    handSpeed: Math.min(400 + level * 10, 520),   // quanto scorre la racchetta
+    handSpeed: handSpeed,                         // quanto scorre la tua racchetta
     shrinkEvery: Math.max(4, 10 - level * 0.5),   // s fra due accorciamenti
     shrinkStep: 4                                 // px persi ogni volta, per entrambi
   };
@@ -46,7 +51,8 @@ TG.registry.register({
 
   levelInfo: function (level) {
     var c = config(level);
-    return 'Livello ' + level + ': CPU a ' + Math.round(c.npcSpeed) + ' px/s, ' +
+    var rel = Math.round(TG.util.opponentSpeedRatio(level) * 100);
+    return 'Livello ' + level + ': CPU al ' + rel + '% della tua velocità, ' +
       'racchetta ' + Math.round(c.paddleW) + ' px, ' +
       'si accorcia ogni ' + c.shrinkEvery.toFixed(0) + 's';
   },
@@ -135,7 +141,14 @@ TG.registry.register({
           var span = W - BALL_R * 2;
           var rel = ((predicted - BALL_R) % (span * 2) + span * 2) % (span * 2);
           predicted = BALL_R + (rel > span ? span * 2 - rel : rel);
-          npcTarget = predicted + npcBias;
+          /* Non si limita a intercettare: si sposta in modo che la palla la
+             colpisca di lato e riparta verso la metà campo che hai scoperto.
+             La mira però usa solo il margine che resta dopo il proprio errore
+             di lettura: spostarsi oltre significherebbe mancare la palla da
+             sola, che è il modo peggiore di essere "aggressiva". */
+          var away = player.x <= W / 2 ? 1 : -1;
+          var margin = Math.max(0, npc.w / 2 - Math.abs(npcBias));
+          npcTarget = predicted + npcBias - away * cfg.npcAim * margin;
         } else {
           npcTarget = W / 2 + api.util.randFloat(-40, 40); // rientra al centro
         }
@@ -246,6 +259,30 @@ TG.registry.register({
       api.util.roundRect(ctx, player.x - player.w / 2, PLAYER_Y, player.w, PADDLE_H, 5);
       ctx.fill();
 
+      // lampeggio su entrambe le racchette quando si accorciano: senza,
+      // il restringimento è troppo lento per accorgersene
+      if (shrinkFlash > 0) {
+        var a = api.util.clamp(shrinkFlash / 0.4, 0, 1);
+        ctx.strokeStyle = 'rgba(255,255,255,' + (a * 0.9).toFixed(2) + ')';
+        ctx.lineWidth = 2;
+        api.util.roundRect(ctx, npc.x - npc.w / 2 - 2, NPC_Y - 2, npc.w + 4, PADDLE_H + 4, 6);
+        ctx.stroke();
+        api.util.roundRect(ctx, player.x - player.w / 2 - 2, PLAYER_Y - 2, player.w + 4, PADDLE_H + 4, 6);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(251,191,36,' + a.toFixed(2) + ')';
+        ctx.font = 'bold 12px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('racchette \u2212' + cfg.shrinkStep + 'px', W / 2, H / 2 - 60);
+      }
+
+      // misure correnti, così l'accorciamento è verificabile a colpo d'occhio
+      ctx.font = '10px ui-monospace, monospace';
+      ctx.fillStyle = 'rgba(230,237,243,0.4)';
+      ctx.textAlign = 'left';
+      ctx.fillText(Math.round(npc.w) + 'px', 8, NPC_Y + 26);
+      ctx.textAlign = 'right';
+      ctx.fillText(Math.round(player.w) + 'px', W - 8, PLAYER_Y - 12);
+
       ctx.fillStyle = serveTimer > 0 ? 'rgba(56,189,248,0.5)' : '#38bdf8';
       ctx.beginPath();
       ctx.arc(ball.x, ball.y, BALL_R, 0, Math.PI * 2);
@@ -266,6 +303,7 @@ TG.registry.register({
         ball: { x: Math.round(ball.x), y: Math.round(ball.y), vy: Math.round(ball.vy) },
         player: { x: Math.round(player.x), w: Math.round(player.w) },
         npc: { x: Math.round(npc.x), w: Math.round(npc.w) },
+        shrinkFlash: shrinkFlash > 0,
         serving: serveTimer > 0,
         shrink: Math.round(shrinkTimer * 10) / 10
       };

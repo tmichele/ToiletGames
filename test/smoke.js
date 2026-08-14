@@ -99,31 +99,41 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   await page.click('.btn:has-text("Gioca")');
   await sleep(1000);
   check('pong parte', (await page.evaluate(() => TG.engine.getState())) === 'running');
-  let over = false;
-  for (let i = 0; i < 40; i++) {
+  /* Restare fermi deve far perdere terreno. Quanto duri l'intera partita ha
+     una coda lunga (a volte oltre il minuto e mezzo), quindi qui si verifica
+     l'andamento; che "fermo non vinca mai" lo misura test/balance.js su
+     centinaia di partite. Intanto si controlla l'accorciamento delle racchette. */
+  const w0 = await page.evaluate(() => TG.engine.inspect().game);
+  let g = w0, minNpcW = w0.npc.w, minMyW = w0.player.w;
+  for (let i = 0; i < 60; i++) {
     await sleep(1000);
-    if (await page.isVisible('#overlay') && (await page.textContent('#overlay-title')).includes('finita')) { over = true; break; }
+    const cur = await page.evaluate(() => TG.engine.getState() === 'running' ? TG.engine.inspect().game : null);
+    if (!cur) break;
+    g = cur;
+    minNpcW = Math.min(minNpcW, cur.npc.w);
+    minMyW = Math.min(minMyW, cur.player.w);
+    if (cur.cpuPts >= 3) break;
   }
-  check('la CPU vince se resti fermo', over);
-  check('classifica pong aggiornata', /L\d/.test(await page.textContent('#board')));
-  check('HUD record allineato ai dati salvati',
-    (await page.textContent('#hud-best')) === String(await page.evaluate(() => TG.scores.best('pong'))));
-  await page.click('.btn:has-text("Altri giochi")');
+  check('restare fermi fa perdere terreno', g.cpuPts >= 3 && g.cpuPts > g.myPts,
+    g.myPts + '-' + g.cpuPts);
+  check('la racchetta della CPU si accorcia', minNpcW < w0.npc.w, w0.npc.w + ' -> ' + minNpcW);
+  check('anche la tua si accorcia', minMyW < w0.player.w, w0.player.w + ' -> ' + minMyW);
+  await page.click('#btn-back');
   await sleep(200);
-  check('card mostra il record', (await page.textContent('.card:has-text("Pong")')).includes('record'));
+  check('card mostra il record', (await page.textContent('.card:has-text("Memoria")')).includes('record'));
 
-  // ---- Mattoni: lancio e perdita vite ----
+  // ---- Mattoni: parte da sola, si gioca a tasti ----
   console.log('\n[mattoni]');
   await page.click('.card:has-text("Mattoni")');
   await page.click('.btn:has-text("Gioca")');
-  await sleep(300);
-  await page.keyboard.press('Space');
-  await sleep(500);
-  check('pallina lanciata', (await canvasHash()) !== 0);
+  check('mattoni ha due tasti grandi',
+    (await page.$$('#touch-controls .bigpad__btn')).length === 2);
+  check('niente pulsante LANCIA', (await page.$$('#touch-controls .action-btn')).length === 0);
+  await sleep(2000);
+  check('la pallina parte da sola', await page.evaluate(() => TG.engine.inspect().game.launched));
   let scoreGrew = false;
   for (let i = 0; i < 25; i++) {
     await sleep(600);
-    await page.keyboard.press('Space'); // rilancia dopo ogni vita persa
     if ((await page.evaluate(() => TG.engine.getScore())) >= 30) { scoreGrew = true; break; }
   }
   check('i mattoni si rompono', scoreGrew, 'punti ' + await page.evaluate(() => TG.engine.getScore()));
@@ -180,15 +190,37 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   await sleep(400);
   await page.click('.btn:has-text("Gioca")');
   let hkGoal = false, stuck = false;
-  for (let i = 0; i < 45; i++) {
+  for (let i = 0; i < 70; i++) {
     await sleep(1000);
     const s = await page.evaluate(() => TG.engine.inspect());
     if (s.game.cpuGoals > 0 || s.game.myGoals > 0) hkGoal = true;
-    if (s.game.puck.x < 0 || s.game.puck.x > 360 || s.game.puck.y < -20 || s.game.puck.y > 540) stuck = true;
+    if (s.game.puck.x < 0 || s.game.puck.x > 360 || s.game.puck.y < -20 || s.game.puck.y > 620) stuck = true;
     if (s.state !== 'running') break;
   }
   check('il disco resta dentro il tavolo', !stuck);
   check('la partita produce gol', hkGoal);
+  check('hockey senza pad a schermo', await page.evaluate(() =>
+    document.getElementById('touch-controls').hidden));
+
+  // il mazzuolo resta sopra il dito, non ci finisce sotto.
+  // Si passa dalla home: rinavigare allo stesso hash non ricarica nulla.
+  await page.goto(URL);
+  await sleep(200);
+  await page.goto(URL + '#/g/hockey');
+  await sleep(400);
+  await page.click('.btn:has-text("Gioca")');
+  await sleep(300);
+  const hbox = await page.$eval('#canvas', el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+  const toLogic = (cy) => (cy - hbox.y) / hbox.h * 600;
+  const touchY = hbox.y + hbox.h * 0.85;
+  await page.mouse.move(hbox.x + hbox.w / 2, touchY);
+  await page.mouse.down();
+  await page.mouse.move(hbox.x + hbox.w / 2, touchY, { steps: 3 });
+  await sleep(600);
+  const my = await page.evaluate(() => TG.engine.inspect().game.me.y);
+  await page.mouse.up();
+  check('il mazzuolo sta sopra il punto toccato', toLogic(touchY) - my > 30,
+    'dito a ' + Math.round(toLogic(touchY)) + ', mazzuolo a ' + my);
 
   // ---- controlli del pong: due tasti larghi, niente trascinamento ----
   console.log('\n[controlli]');
@@ -218,17 +250,19 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   await page.click('.btn:has-text("Gioca")');
   await sleep(200);
   await page.keyboard.press('Space');
-  let sawMalus = false, peak = 0;
-  for (let i = 0; i < 30; i++) {
-    await sleep(500);
+  /* Il punteggio può solo salire (mattoni) o scendere per il malus del tocco
+     di racchetta: un calo fra due campioni è la prova che il malus si applica. */
+  let sawMalus = false, peak = 0, prevScore = 0;
+  for (let i = 0; i < 80; i++) {
+    await sleep(250);
     const s = await page.evaluate(() => TG.engine.inspect());
     peak = Math.max(peak, s.game.combo);
-    if (s.score > 0 && s.game.combo === 0) sawMalus = true;  // combo azzerata dal tocco
-    if (!s.game.launched) await page.keyboard.press('Space');
+    if (s.score < prevScore) sawMalus = true;
+    prevScore = s.score;
     if (s.state !== 'running') break;
   }
   check('la combo cresce rompendo i mattoni', peak >= 1, 'massimo ' + peak);
-  check('il tocco di racchetta azzera la combo', sawMalus);
+  check('il tocco di racchetta toglie punti', sawMalus);
 
   // ---- persistenza + deep link ----
   console.log('\n[persistenza]');
