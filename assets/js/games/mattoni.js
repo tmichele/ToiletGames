@@ -9,6 +9,10 @@ var COLS = 7;
 var ROW_COLORS = ['#f87171', '#fb923c', '#fbbf24', '#a3e635', '#4ade80', '#22d3ee', '#c084fc'];
 var COMBO_MAX = 5;      // oltre questo il moltiplicatore non cresce più
 var TURBO_BOOST = 1.15; // quanto accelera la pallina un mattone turbo
+var GHOST_TIME = 10;    // s di pallina a intermittenza dopo un mattone fantasma
+var GHOST_MAX = 14;     // s: tetto se ne rompi altri mentre l'effetto è attivo
+var GHOST_ON = 0.32;    // s visibile in ogni ciclo di lampeggio
+var GHOST_OFF = 0.46;   // s invisibile
 var SPEED_CAP = 2;      // volte la velocità del livello: tetto invalicabile
 var SPECIAL_CAP = 0.8;  // quota massima di muro occupata da mattoni speciali
 
@@ -29,6 +33,10 @@ function config(level) {
     armored: level >= 5 ? Math.min(0.12 + (level - 5) * 0.07, 0.55) : 0, // quota a 2 colpi
     turbo: level >= 2 ? Math.min(0.10 + (level - 2) * 0.03, 0.30) : 0,   // accelerano la pallina
     matto: level >= 3 ? Math.min(0.08 + (level - 3) * 0.03, 0.28) : 0,   // rimbalzo a caso
+    fantasma: level >= 4 ? Math.min(0.06 + (level - 4) * 0.02, 0.18) : 0, // pallina a intermittenza
+    /* Quanto può sbandare la pallina su un mattone impazzito. Cresce con il
+       livello: più avanti vai, meno il rimbalzo somiglia a un rimbalzo. */
+    mattoAngle: Math.min(1.3 + level * 0.06, 2),
     extraLifeEvery: 3,
     brickPoints: 10 * level,
     paddleMalus: 5 * level,  // costo di ogni ritorno sulla racchetta
@@ -49,7 +57,8 @@ TG.registry.register({
     'Le vite valgono per tutta la partita: ne guadagni una ogni 3 livelli. ' +
     '<b>Mattoni speciali:</b> quelli scuri reggono due colpi, i <b>turbo</b> (»») ' +
     'accelerano la pallina per tutto il livello, gli <b>impazziti</b> (?) la ' +
-    'rimandano a un angolo qualsiasi. Valgono metà punti in più, ma cambiano ' +
+    'rimandano a un angolo qualsiasi, i <b>fantasma</b> (◌) la fanno sparire a ' +
+    'intermittenza per dieci secondi. Valgono metà punti in più, ma cambiano ' +
     'la partita: romperli con la combo alta è redditizio, romperli quando la ' +
     'pallina già corre è come darsi una zappata sui piedi. ' +
     '<b>Combo:</b> ogni mattone rotto senza tornare sulla racchetta vale di più ' +
@@ -62,6 +71,7 @@ TG.registry.register({
     if (c.armored) speciali.push('corazzati');
     if (c.turbo) speciali.push('turbo');
     if (c.matto) speciali.push('impazziti');
+    if (c.fantasma) speciali.push('fantasma');
     return 'Livello ' + level + ': ' + c.rows + ' file, pallina a ' +
       Math.round(c.ballSpeed) + ' px/s' +
       (speciali.length ? ', mattoni ' + speciali.join(' e ') : '') +
@@ -74,6 +84,7 @@ TG.registry.register({
     var TOP = 46, BRICK_H = 18, GAP = 4;
 
     var cfg, paddle, ball, bricks, lives, launched, blink, stall, combo, floaters, autoLaunch;
+    var ghostLeft, ghostClock, malusTotale;
 
     /* Riporta la pallina alla velocità del livello evitando traiettorie
        quasi orizzontali, che produrrebbero scambi infiniti. */
@@ -93,16 +104,17 @@ TG.registry.register({
        supererebbero il muro intero, quindi vengono riscalate: sotto una certa
        soglia devono restare mattoni normali, altrimenti non c'è più partita. */
     function pickKind() {
-      var a = cfg.armored, t = cfg.turbo, m = cfg.matto;
-      var tot = a + t + m;
+      var a = cfg.armored, t = cfg.turbo, m = cfg.matto, f = cfg.fantasma;
+      var tot = a + t + m + f;
       if (tot > SPECIAL_CAP) {
         var k = SPECIAL_CAP / tot;
-        a *= k; t *= k; m *= k;
+        a *= k; t *= k; m *= k; f *= k;
       }
       var r = Math.random();
       if (r < a) return 'corazzato';
       if (r < a + t) return 'turbo';
       if (r < a + t + m) return 'matto';
+      if (r < a + t + m + f) return 'fantasma';
       return 'normale';
     }
 
@@ -149,6 +161,9 @@ TG.registry.register({
       blink = 0;
       stall = 0;
       combo = 0;
+      ghostLeft = 0;
+      ghostClock = 0;
+      malusTotale = 0;
       floaters = [];
       paddle = { x: W / 2, w: cfg.paddleW };
       buildBricks();
@@ -163,7 +178,16 @@ TG.registry.register({
         return;
       }
       blink = 0.5;
+      ghostLeft = 0;   // ricominciare al buio dopo una vita persa sarebbe accanimento
       resetBall();
+    }
+
+    /* Durante l'effetto fantasma la pallina alterna un tratto visibile e uno
+       invisibile: si può ancora seguirla a intuito, ma la traiettoria va tenuta
+       a mente invece che guardata. */
+    function ballVisible() {
+      if (ghostLeft <= 0) return true;
+      return (ghostClock % (GHOST_ON + GHOST_OFF)) < GHOST_ON;
     }
 
     function remaining() {
@@ -182,10 +206,18 @@ TG.registry.register({
           text: '\u00bb velocit\u00e0', x: b.x + b.w / 2, y: b.y - 12, t: 0.8, color: '#fb923c'
         });
         api.sfx.tone(520, 0.12, 'sawtooth', 0.09, 900);
+      } else if (b.kind === 'fantasma') {
+        ghostLeft = Math.min(ghostLeft + GHOST_TIME, GHOST_MAX);
+        ghostClock = 0;   // riparte visibile, per non sparire proprio adesso
+        floaters.push({
+          text: '\u25cc invisibile', x: b.x + b.w / 2, y: b.y - 12, t: 0.9, color: '#67e8f9'
+        });
+        api.sfx.tone(900, 0.2, 'sine', 0.09, 240);
       } else if (b.kind === 'matto') {
         // ruota la direzione di un angolo qualsiasi, poi la rimette in riga:
         // normalizeBall impedisce le traiettorie quasi orizzontali
-        var ang = Math.atan2(ball.vy, ball.vx) + api.util.randFloat(-1.1, 1.1);
+        var ang = Math.atan2(ball.vy, ball.vx) +
+          api.util.randFloat(-cfg.mattoAngle, cfg.mattoAngle);
         var sp = Math.hypot(ball.vx, ball.vy) || ball.speed;
         ball.vx = Math.cos(ang) * sp;
         ball.vy = Math.sin(ang) * sp;
@@ -203,7 +235,7 @@ TG.registry.register({
       if (b.hp <= 0) {
         b.alive = false;
         combo++;
-        var special = b.kind === 'turbo' || b.kind === 'matto' || b.kind === 'corazzato';
+        var special = b.kind !== 'normale';
         var mult = Math.min(combo, COMBO_MAX);
         var pts = Math.round(cfg.brickPoints * mult * (special ? SPECIAL_BONUS : 1));
         api.addScore(pts);
@@ -252,6 +284,11 @@ TG.registry.register({
       var a;
       while ((a = api.input.take())) { if (a === 'action') launch(); }
       if (blink > 0) blink -= dt;
+
+      if (ghostLeft > 0) {
+        ghostLeft = Math.max(0, ghostLeft - dt);
+        ghostClock += dt;
+      }
 
       for (var f = floaters.length - 1; f >= 0; f--) {
         floaters[f].t -= dt;
@@ -307,6 +344,7 @@ TG.registry.register({
              incatenare più mattoni per volo invece di palleggiare a caso. */
           if (cfg.paddleMalus > 0) {
             api.addScore(-cfg.paddleMalus);
+            malusTotale += cfg.paddleMalus;
             floaters.push({
               text: '\u2212' + cfg.paddleMalus, x: paddle.x, y: PADDLE_Y - 10,
               t: 0.7, color: '#f87171'
@@ -329,6 +367,7 @@ TG.registry.register({
         if (b.hp > 1) fill = '#3f4a5c';
         else if (b.kind === 'turbo') fill = '#fb923c';
         else if (b.kind === 'matto') fill = '#c084fc';
+        else if (b.kind === 'fantasma') fill = '#67e8f9';
         ctx.fillStyle = fill;
         api.util.roundRect(ctx, b.x, b.y, b.w, b.h, 4);
         ctx.fill();
@@ -338,14 +377,15 @@ TG.registry.register({
           ctx.lineWidth = 1.5;
           api.util.roundRect(ctx, b.x + 1, b.y + 1, b.w - 2, b.h - 2, 3);
           ctx.stroke();
-        } else if (b.kind === 'turbo' || b.kind === 'matto') {
+        } else if (b.kind !== 'normale') {
           // simbolo leggibile anche a schermo piccolo: il colore da solo
           // non basta a distinguerli mentre la pallina corre
           ctx.fillStyle = 'rgba(5,7,12,0.75)';
           ctx.font = 'bold 11px ui-monospace, monospace';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(b.kind === 'turbo' ? '\u00bb\u00bb' : '?', b.x + b.w / 2, b.y + b.h / 2 + 1);
+          var simbolo = b.kind === 'turbo' ? '\u00bb\u00bb' : (b.kind === 'matto' ? '?' : '\u25cc');
+          ctx.fillText(simbolo, b.x + b.w / 2, b.y + b.h / 2 + 1);
           ctx.textBaseline = 'alphabetic';
         }
       });
@@ -354,10 +394,12 @@ TG.registry.register({
       api.util.roundRect(ctx, paddle.x - paddle.w / 2, PADDLE_Y, paddle.w, PADDLE_H, 5);
       ctx.fill();
 
-      ctx.fillStyle = '#e6edf3';
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, BALL_R, 0, Math.PI * 2);
-      ctx.fill();
+      if (ballVisible()) {
+        ctx.fillStyle = ghostLeft > 0 ? '#67e8f9' : '#e6edf3';
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, BALL_R, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       ctx.font = '12px ui-monospace, monospace';
       ctx.textAlign = 'left';
@@ -365,6 +407,13 @@ TG.registry.register({
       ctx.fillText('vite ' + '●'.repeat(Math.max(0, lives)), 8, 18);
       ctx.textAlign = 'right';
       ctx.fillText('mattoni ' + remaining(), W - 8, 18);
+
+      if (ghostLeft > 0) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#67e8f9';
+        ctx.font = 'bold 12px ui-monospace, monospace';
+        ctx.fillText('\u25cc ' + ghostLeft.toFixed(1) + 's', W / 2, 34);
+      }
 
       if (combo > 1) {
         ctx.textAlign = 'center';
@@ -393,6 +442,9 @@ TG.registry.register({
       return {
         lives: lives, bricks: remaining(), combo: combo, launched: launched,
         speed: Math.round(Math.hypot(ball.vx, ball.vy)),
+        ghost: Math.round(ghostLeft * 10) / 10,
+        malus: malusTotale,
+        ballVisible: ballVisible(),
         baseSpeed: Math.round(cfg.ballSpeed),
         speciali: bricks.reduce(function (acc, b) {
           if (b.alive && b.kind !== 'normale') acc[b.kind] = (acc[b.kind] || 0) + 1;

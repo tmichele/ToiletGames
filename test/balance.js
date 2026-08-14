@@ -104,12 +104,16 @@ const BOTS = {
     };
   },
 
-  // anche i mattoni si giocano a tasti: il bot li tiene premuti
+  /* Anche i mattoni si giocano a tasti. Quando la pallina è invisibile (mattone
+     fantasma) il bot non la vede: continua verso l'ultima posizione nota, come
+     farebbe una persona. Senza questo, l'effetto non comparirebbe nei numeri. */
   mattoni: (profile) => (api, game) => {
     const delay = delayLine(profile);
     const err = (Math.random() * 2 - 1) * profile.error;
+    let lastSeen = api.width / 2;
     return function (s, dt) {
-      const target = delay(s.ball.x, dt) + err;
+      if (s.ballVisible !== false) lastSeen = s.ball.x;
+      const target = delay(lastSeen, dt) + err;
       const dx = target - s.paddle.x;
       api.input.held.left = dx < -6;
       api.input.held.right = dx > 6;

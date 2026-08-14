@@ -62,7 +62,8 @@ console.log('\n[mattoni: tipi di mattone]');
   const l1 = kindsAt(1), l3 = kindsAt(3), l6 = kindsAt(6);
   check('al livello 1 il muro è tutto normale', Object.keys(l1).length === 0, Object.keys(l1).join(','));
   check('turbo e impazziti compaiono entro il livello 3', l3.turbo && l3.matto, Object.keys(l3).join(','));
-  check('i corazzati arrivano più avanti', !!l6.corazzato, Object.keys(l6).join(','));
+  check('i fantasma non compaiono prima del livello 4', !l3.fantasma, Object.keys(l3).join(','));
+  check('corazzati e fantasma arrivano più avanti', l6.corazzato && l6.fantasma, Object.keys(l6).join(','));
 
   /* Effetto turbo: con un giocatore che tiene la pallina in gioco, prima o poi
      cade un mattone turbo e la velocità supera quella del livello. */
@@ -115,6 +116,63 @@ console.log('\n[mattoni: tipi di mattone]');
     return sawWildTurn;
   }, 120, follow(gc.input, gc.game, 'ball'));
   check('un mattone impazzito devia la pallina di un angolo qualsiasi', sawWildTurn);
+
+  /* Ai livelli alti la deviazione deve essere ampia: è la richiesta di rendere
+     gli speciali più imprevedibili, e senza una misura resterebbe un'opinione. */
+  const gw = makeGame(def, util, 10);
+  let maxTurn = 0, prevA = null, prevM = null;
+  runUntil(gw.game, () => {
+    const s = gw.game.state();
+    const matti = s.speciali.matto || 0;
+    const ang = Math.atan2(s.ball.vy, s.ball.vx);
+    if (prevM !== null && matti < prevM && prevA !== null) {
+      let d = Math.abs(ang - prevA);
+      if (d > Math.PI) d = 2 * Math.PI - d;
+      maxTurn = Math.max(maxTurn, Math.min(d, Math.PI - d) + 0);
+      if (d > 1.2 && Math.abs(d - Math.PI) > 0.2) maxTurn = Math.max(maxTurn, d);
+    }
+    prevM = matti;
+    prevA = ang;
+    return maxTurn > 1.2;
+  }, 150, follow(gw.input, gw.game, 'ball'));
+  check('agli ultimi livelli le deviazioni superano il quarto di giro',
+    maxTurn > 1.2, 'massima osservata ' + maxTurn.toFixed(2) + ' rad');
+}
+
+/* ---------- Mattoni: il mattone fantasma ---------- */
+
+console.log('\n[mattoni: pallina a intermittenza]');
+{
+  const def = defs.mattoni;
+  const g = makeGame(def, util, 8);   // quota fantasma alta abbastanza da beccarne uno
+  let ghostSeen = 0, sparita = false, riapparsa = false, ghostAtStart = 0;
+
+  runUntil(g.game, () => {
+    const s = g.game.state();
+    if (s.ghost > 0) {
+      if (!ghostSeen) ghostAtStart = s.ghost;
+      ghostSeen = Math.max(ghostSeen, s.ghost);
+      if (!s.ballVisible) sparita = true;
+      if (sparita && s.ballVisible) riapparsa = true;
+    }
+    return sparita && riapparsa;
+  }, 180, follow(g.input, g.game, 'ball'));
+
+  check('rompere un fantasma avvia l\'effetto', ghostSeen > 0,
+    'partito da ' + ghostAtStart.toFixed(1) + 's, picco ' + ghostSeen.toFixed(1) + 's');
+  check('la pallina sparisce e riappare (intermittenza)', sparita && riapparsa);
+  check('l\'effetto dura circa dieci secondi', ghostSeen >= 9 && ghostSeen <= 14.1,
+    ghostSeen.toFixed(1) + 's');
+
+  // e deve finire: un effetto che non scade sarebbe una partita al buio
+  const g2 = makeGame(def, util, 8);
+  let visto = false;
+  const scaduto = runUntil(g2.game, () => {
+    const s = g2.game.state();
+    if (s.ghost > 0) visto = true;
+    return visto && s.ghost === 0 && s.ballVisible;
+  }, 200, follow(g2.input, g2.game, 'ball'));
+  check('l\'effetto scade e la pallina torna visibile', !visto || scaduto);
 }
 
 /* ---------- Pong: accorciamento delle racchette ---------- */

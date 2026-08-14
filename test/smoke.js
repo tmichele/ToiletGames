@@ -112,7 +112,9 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     g = cur;
     minNpcW = Math.min(minNpcW, cur.npc.w);
     minMyW = Math.min(minMyW, cur.player.w);
-    if (cur.cpuPts >= 3) break;
+    // non basta il punteggio: serve tempo perché scatti almeno un
+    // accorciamento (ogni 9,5s al primo livello), altrimenti si misura nulla
+    if (cur.cpuPts >= 3 && i >= 13) break;
   }
   check('restare fermi fa perdere terreno', g.cpuPts >= 3 && g.cpuPts > g.myPts,
     g.myPts + '-' + g.cpuPts);
@@ -252,17 +254,16 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   await page.keyboard.press('Space');
   /* Il punteggio può solo salire (mattoni) o scendere per il malus del tocco
      di racchetta: un calo fra due campioni è la prova che il malus si applica. */
-  let sawMalus = false, peak = 0, prevScore = 0;
+  let peak = 0, malus = 0;
   for (let i = 0; i < 80; i++) {
     await sleep(250);
     const s = await page.evaluate(() => TG.engine.inspect());
     peak = Math.max(peak, s.game.combo);
-    if (s.score < prevScore) sawMalus = true;
-    prevScore = s.score;
+    malus = Math.max(malus, s.game.malus);   // punti tolti dai tocchi di racchetta
     if (s.state !== 'running') break;
   }
   check('la combo cresce rompendo i mattoni', peak >= 1, 'massimo ' + peak);
-  check('il tocco di racchetta toglie punti', sawMalus);
+  check('il tocco di racchetta toglie punti', malus > 0, malus + ' punti tolti');
 
   // ---- persistenza + deep link ----
   console.log('\n[persistenza]');
