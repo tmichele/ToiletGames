@@ -11,12 +11,16 @@ da `file://`) e giochi.
 | 🐍 **Serpente** | Snake a griglia | Più velocità, più bocconi richiesti, bordi mortali e ostacoli dal livello 3 |
 | 🏓 **Pong CPU** | Uno contro uno con avversario simulato | La CPU è più rapida e sbaglia meno la mira, pallina più veloce, racchetta più corta. Durante il set **entrambe** le racchette si accorciano |
 | 🧠 **Memoria** | Ripeti la sequenza luminosa | Da 4 a 9 riquadri, sequenze più lunghe, riproduzione più rapida, tempo limite per tocco |
-| 🧱 **Mattoni** | Breakout con combo | Più file, mattoni corazzati dal livello 5, pallina che finisce per correre più di te; le vite valgono per tutta la partita |
+| 🧱 **Mattoni** | Breakout con combo e mattoni speciali | Più file, mattoni turbo dal 2° livello, impazziti dal 3°, corazzati dal 5°; le vite valgono per tutta la partita |
 | 🏒 **Air Hockey** | Tavolo ad aria contro la CPU | Il portiere avversario copre meglio la porta, rientra più in fretta dopo il tiro, la sua porta si restringe |
 
 In **Mattoni** i punti seguono la mira: ogni mattone rotto senza tornare sulla
 racchetta vale di più (fino a ×5), mentre ogni tocco di racchetta toglie punti e
-azzera il moltiplicatore. **Pong** e **Mattoni** si giocano solo con i due tasti
+azzera il moltiplicatore. Il muro poi non è tutto uguale: i mattoni **turbo**
+(»») accelerano la pallina per il resto del livello, gli **impazziti** (?) la
+rimandano a un angolo qualsiasi, i **corazzati** reggono due colpi. Valgono metà
+punti in più, ma decidono che partita sarà: la velocità con cui ti ritrovi a
+giocare dipende da quali mattoni hai scelto di rompere. **Pong** e **Mattoni** si giocano solo con i due tasti
 sotto il campo, che si dividono tutta la larghezza disponibile; in **Air Hockey**
 si trascina il dito, e il mazzuolo resta sopra il polpastrello per non finirci
 sotto.
@@ -69,8 +73,10 @@ assets/js/core/
   app.js                    avvio e navigazione (#/g/<id>)
 assets/js/games/            un file per gioco
 docs/AGGIUNGERE_UN_GIOCO.md come aggiungerne uno
+test/sandbox.js             esecuzione dei giochi fuori dal browser
 test/smoke.js               test di fumo con Playwright
-test/balance.js             banco di prova della difficoltà (senza browser)
+test/balance.js             banco di prova della difficoltà
+test/regole.js              meccaniche difficili da raggiungere nel browser
 ```
 
 La divisione è netta: il motore gestisce canvas, ciclo, pausa, livelli,
@@ -83,6 +89,7 @@ punteggio e classifica; il singolo gioco implementa solo `start`, `update` e
 ```
 npx playwright@1 install chromium     # una volta sola
 node test/smoke.js                    # la suite gira davvero
+node test/regole.js                   # le meccaniche fanno quello che dicono
 node test/balance.js                  # la difficoltà è tarata
 ```
 
@@ -97,6 +104,13 @@ a «il livello 1 è troppo difficile?», che è esattamente il tipo di domanda s
 cui è facile sbagliarsi a occhio. Le partite che non finiscono vengono segnalate
 come «infinite»: sono stalli, e vanno corretti.
 
+`regole.js` usa la stessa sandbox per verificare le meccaniche che nel browser
+costerebbero partite intere: che i mattoni turbo accelerino davvero la pallina
+(senza sfondare il tetto di velocità), che gli impazziti la devino di un angolo
+che nessun rimbalzo normale produrrebbe, che il tocco di racchetta tolga punti,
+che le racchette del pong si accorcino, che il disco dell'hockey non esca dal
+tavolo nemmeno se lo schiacci in uno spigolo.
+
 Il primo profilo, «fermo», non tocca niente: serve a verificare che stare fermi
 faccia perdere. Un gioco che si vince senza giocare è rotto quanto uno
 impossibile, ed è successo davvero — nel pong l'avversario sbagliava così spesso
@@ -109,8 +123,8 @@ Stato attuale (percentuale di livelli vinti dal profilo indicato):
 | Pong CPU · fermo | 3% | 3% | 0% | 0% | 0% |
 | Pong CPU · medio | 80% | 53% | 18% | 8% | 5% |
 | Pong CPU · bravo | 98% | 98% | 88% | 78% | 40% |
-| Mattoni · medio | 98% | 38% | 5% | 0% | 0% |
-| Mattoni · bravo | 100% | 100% | 100% | 90% | 3% |
+| Mattoni · medio | 95% | 23% | 3% | 0% | 0% |
+| Mattoni · bravo | 100% | 100% | 95% | 35% | 0% |
 | Air Hockey · medio | 68% | 18% | 3% | 0% | 0% |
 | Air Hockey · bravo | 98% | 85% | 25% | 0% | 0% |
 

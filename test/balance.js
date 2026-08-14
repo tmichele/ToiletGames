@@ -9,53 +9,12 @@
    Uso:  node test/balance.js            tutti i giochi, livelli 1..10
          node test/balance.js pong 1 5   solo pong, livelli 1..5 */
 
-const fs = require('fs');
-const path = require('path');
-const vm = require('vm');
+const { loadGames, makeInput, SFX } = require('./sandbox');
 
-const ROOT = path.resolve(__dirname, '..');
 const DT = 1 / 60;            // passo fisso di simulazione
 const MAX_SECONDS = 240;      // taglio di sicurezza per partite che non finiscono
 const MATCHES = 40;           // partite per livello e per profilo
 
-/* ---------- caricamento dei giochi in sandbox ---------- */
-
-function loadGames() {
-  const ctx = { console, Math, Date, JSON, isNaN, parseInt, parseFloat };
-  ctx.window = ctx;
-  vm.createContext(ctx);
-
-  const run = (rel) => vm.runInContext(fs.readFileSync(path.join(ROOT, rel), 'utf8'), ctx, { filename: rel });
-
-  run('assets/js/core/util.js');
-
-  const defs = {};
-  ctx.TG.registry = { register: (def) => { defs[def.id] = def; } };
-
-  fs.readdirSync(path.join(ROOT, 'assets/js/games'))
-    .filter((f) => f.endsWith('.js'))
-    .forEach((f) => run(path.join('assets/js/games', f)));
-
-  return { defs, util: ctx.TG.util };
-}
-
-/* ---------- finti servizi del motore ---------- */
-
-const SFX = new Proxy({}, { get: () => () => {} });
-
-function makeInput() {
-  return {
-    pointer: { x: 0, y: 0, down: false, inside: true, moved: true },
-    held: {},
-    queue: [],
-    press(a) { this.queue.push(a); },
-    isDown(a) { return !!this.held[a]; },
-    take() { return this.queue.length ? this.queue.shift() : null; },
-    takeTap() { return null; },
-    takeDigit() { return null; },
-    reset() {}
-  };
-}
 
 /* Una partita: il bot guida, il gioco gira, si guarda come finisce. */
 function playMatch(def, util, level, bot) {

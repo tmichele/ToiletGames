@@ -1,23 +1,34 @@
 /* Mattoni — breakout a livelli.
-   Difficoltà: più file di mattoni, mattoni corazzati dal livello 4, pallina
-   più veloce e racchetta più corta. Le vite restano fra un livello e l'altro. */
+   Difficoltà: più file, mattoni speciali (corazzati, turbo, impazziti), pallina
+   che arriva a correre più della racchetta. Le vite restano fra un livello e
+   l'altro. */
 (function () {
 'use strict';
 
 var COLS = 7;
 var ROW_COLORS = ['#f87171', '#fb923c', '#fbbf24', '#a3e635', '#4ade80', '#22d3ee', '#c084fc'];
-var COMBO_MAX = 5;    // oltre questo il moltiplicatore non cresce più
+var COMBO_MAX = 5;      // oltre questo il moltiplicatore non cresce più
+var TURBO_BOOST = 1.15; // quanto accelera la pallina un mattone turbo
+var SPEED_CAP = 2;      // volte la velocità del livello: tetto invalicabile
+var SPECIAL_CAP = 0.8;  // quota massima di muro occupata da mattoni speciali
+
+/* I mattoni speciali costano cari se li rompi al momento sbagliato, quindi
+   valgono di più: sono una scelta, non solo un ostacolo. */
+var SPECIAL_BONUS = 1.5;
 
 function config(level) {
   return {
     level: level,
     rows: Math.min(3 + Math.floor((level - 1) / 2), 7),
     /* La pallina deve arrivare a superare la racchetta: finché resta più
-       lenta, chi la insegue bene non sbaglia mai e i livelli alti non sfidano
-       nessuno. Oltre il livello 10 va più veloce di quanto tu possa scorrere. */
-    ballSpeed: Math.min(170 + level * 18, 560),
+       lenta, chi la insegue bene non sbaglia mai. La rampa qui è volutamente
+       dolce perché una parte dell'accelerazione la portano i mattoni turbo,
+       che rendono la velocità una conseguenza di come giochi. */
+    ballSpeed: Math.min(170 + level * 13, 480),
     paddleW: Math.max(52, 92 - level * 2.5),
-    armored: level >= 5 ? Math.min(0.12 + (level - 5) * 0.07, 0.55) : 0, // quota di mattoni a 2 colpi
+    armored: level >= 5 ? Math.min(0.12 + (level - 5) * 0.07, 0.55) : 0, // quota a 2 colpi
+    turbo: level >= 2 ? Math.min(0.10 + (level - 2) * 0.03, 0.30) : 0,   // accelerano la pallina
+    matto: level >= 3 ? Math.min(0.08 + (level - 3) * 0.03, 0.28) : 0,   // rimbalzo a caso
     extraLifeEvery: 3,
     brickPoints: 10 * level,
     paddleMalus: 5 * level,  // costo di ogni ritorno sulla racchetta
@@ -36,15 +47,24 @@ TG.registry.register({
   howto: '<b>Comandi:</b> i due tasti ◀ ▶ sotto il campo, oppure le frecce ←/→. ' +
     'La pallina parte da sola dopo un secondo, o subito se muovi la racchetta. ' +
     'Le vite valgono per tutta la partita: ne guadagni una ogni 3 livelli. ' +
-    'I mattoni scuri reggono due colpi. ' +
+    '<b>Mattoni speciali:</b> quelli scuri reggono due colpi, i <b>turbo</b> (»») ' +
+    'accelerano la pallina per tutto il livello, gli <b>impazziti</b> (?) la ' +
+    'rimandano a un angolo qualsiasi. Valgono metà punti in più, ma cambiano ' +
+    'la partita: romperli con la combo alta è redditizio, romperli quando la ' +
+    'pallina già corre è come darsi una zappata sui piedi. ' +
     '<b>Combo:</b> ogni mattone rotto senza tornare sulla racchetta vale di più ' +
     '(fino a ×' + COMBO_MAX + '), mentre <b>ogni tocco di racchetta toglie punti</b> ' +
     'e azzera il moltiplicatore. Conviene mirare e far lavorare i rimbalzi.',
 
   levelInfo: function (level) {
     var c = config(level);
+    var speciali = [];
+    if (c.armored) speciali.push('corazzati');
+    if (c.turbo) speciali.push('turbo');
+    if (c.matto) speciali.push('impazziti');
     return 'Livello ' + level + ': ' + c.rows + ' file, pallina a ' +
-      Math.round(c.ballSpeed) + ' px/s' + (c.armored ? ', mattoni corazzati' : '') +
+      Math.round(c.ballSpeed) + ' px/s' +
+      (speciali.length ? ', mattoni ' + speciali.join(' e ') : '') +
       ' · mattone ' + c.brickPoints + ' pt, tocco di racchetta −' + c.paddleMalus;
   },
 
@@ -69,18 +89,36 @@ TG.registry.register({
       }
     }
 
+    /* Estrae il tipo di mattone. Le quote dei livelli alti sommate
+       supererebbero il muro intero, quindi vengono riscalate: sotto una certa
+       soglia devono restare mattoni normali, altrimenti non c'è più partita. */
+    function pickKind() {
+      var a = cfg.armored, t = cfg.turbo, m = cfg.matto;
+      var tot = a + t + m;
+      if (tot > SPECIAL_CAP) {
+        var k = SPECIAL_CAP / tot;
+        a *= k; t *= k; m *= k;
+      }
+      var r = Math.random();
+      if (r < a) return 'corazzato';
+      if (r < a + t) return 'turbo';
+      if (r < a + t + m) return 'matto';
+      return 'normale';
+    }
+
     function buildBricks() {
       bricks = [];
       var bw = (W - GAP * (COLS + 1)) / COLS;
       for (var r = 0; r < cfg.rows; r++) {
         for (var c = 0; c < COLS; c++) {
-          var hard = cfg.armored > 0 && Math.random() < cfg.armored;
+          var kind = pickKind();
           bricks.push({
             x: GAP + c * (bw + GAP),
             y: TOP + r * (BRICK_H + GAP),
             w: bw,
             h: BRICK_H,
-            hp: hard ? 2 : 1,
+            kind: kind,
+            hp: kind === 'corazzato' ? 2 : 1,
             color: ROW_COLORS[r % ROW_COLORS.length],
             alive: true
           });
@@ -134,19 +172,46 @@ TG.registry.register({
       return n;
     }
 
+    /* Effetti dei mattoni speciali: si applicano dopo il rimbalzo normale,
+       così la pallina riparte comunque fuori dal mattone appena rotto. */
+    function applyBrickEffect(b) {
+      if (b.kind === 'turbo') {
+        ball.speed = Math.min(ball.speed * TURBO_BOOST, cfg.ballSpeed * SPEED_CAP);
+        normalizeBall();
+        floaters.push({
+          text: '\u00bb velocit\u00e0', x: b.x + b.w / 2, y: b.y - 12, t: 0.8, color: '#fb923c'
+        });
+        api.sfx.tone(520, 0.12, 'sawtooth', 0.09, 900);
+      } else if (b.kind === 'matto') {
+        // ruota la direzione di un angolo qualsiasi, poi la rimette in riga:
+        // normalizeBall impedisce le traiettorie quasi orizzontali
+        var ang = Math.atan2(ball.vy, ball.vx) + api.util.randFloat(-1.1, 1.1);
+        var sp = Math.hypot(ball.vx, ball.vy) || ball.speed;
+        ball.vx = Math.cos(ang) * sp;
+        ball.vy = Math.sin(ang) * sp;
+        normalizeBall();
+        floaters.push({
+          text: '? angolo', x: b.x + b.w / 2, y: b.y - 12, t: 0.8, color: '#c084fc'
+        });
+        api.sfx.tone(700, 0.14, 'square', 0.08, 380);
+      }
+    }
+
     function hitBrick(b) {
       b.hp--;
       stall = 0;
       if (b.hp <= 0) {
         b.alive = false;
         combo++;
+        var special = b.kind === 'turbo' || b.kind === 'matto' || b.kind === 'corazzato';
         var mult = Math.min(combo, COMBO_MAX);
-        var pts = cfg.brickPoints * mult;
+        var pts = Math.round(cfg.brickPoints * mult * (special ? SPECIAL_BONUS : 1));
         api.addScore(pts);
         floaters.push({
           text: '+' + pts + (mult > 1 ? ' \u00d7' + mult : ''),
           x: b.x + b.w / 2, y: b.y, t: 0.7, color: mult > 1 ? '#fbbf24' : '#4ade80'
         });
+        applyBrickEffect(b);
         api.sfx.pick();
         if (remaining() === 0) {
           api.levelComplete({
@@ -232,7 +297,8 @@ TG.registry.register({
         if (Math.abs(ball.x - paddle.x) <= paddle.w / 2 + BALL_R) {
           var offset = api.util.clamp((ball.x - paddle.x) / (paddle.w / 2), -1, 1);
           var angle = offset * 1.1 + api.util.randFloat(-0.05, 0.05);
-          ball.speed = Math.min(ball.speed * 1.02, cfg.ballSpeed * 1.5);
+          // il tetto è lo stesso dei turbo: un tocco di racchetta non li annulla
+          ball.speed = Math.min(ball.speed * 1.02, cfg.ballSpeed * SPEED_CAP);
           ball.vx = Math.sin(angle) * ball.speed;
           ball.vy = -Math.cos(angle) * ball.speed;
           ball.y = PADDLE_Y - BALL_R;
@@ -259,14 +325,28 @@ TG.registry.register({
 
       bricks.forEach(function (b) {
         if (!b.alive) return;
-        ctx.fillStyle = b.hp > 1 ? '#3f4a5c' : b.color;
+        var fill = b.color;
+        if (b.hp > 1) fill = '#3f4a5c';
+        else if (b.kind === 'turbo') fill = '#fb923c';
+        else if (b.kind === 'matto') fill = '#c084fc';
+        ctx.fillStyle = fill;
         api.util.roundRect(ctx, b.x, b.y, b.w, b.h, 4);
         ctx.fill();
-        if (b.hp > 1) {
+
+        if (b.hp > 1) {                       // corazzato: doppio bordo
           ctx.strokeStyle = b.color;
           ctx.lineWidth = 1.5;
           api.util.roundRect(ctx, b.x + 1, b.y + 1, b.w - 2, b.h - 2, 3);
           ctx.stroke();
+        } else if (b.kind === 'turbo' || b.kind === 'matto') {
+          // simbolo leggibile anche a schermo piccolo: il colore da solo
+          // non basta a distinguerli mentre la pallina corre
+          ctx.fillStyle = 'rgba(5,7,12,0.75)';
+          ctx.font = 'bold 11px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(b.kind === 'turbo' ? '\u00bb\u00bb' : '?', b.x + b.w / 2, b.y + b.h / 2 + 1);
+          ctx.textBaseline = 'alphabetic';
         }
       });
 
@@ -312,6 +392,12 @@ TG.registry.register({
     function state() {
       return {
         lives: lives, bricks: remaining(), combo: combo, launched: launched,
+        speed: Math.round(Math.hypot(ball.vx, ball.vy)),
+        baseSpeed: Math.round(cfg.ballSpeed),
+        speciali: bricks.reduce(function (acc, b) {
+          if (b.alive && b.kind !== 'normale') acc[b.kind] = (acc[b.kind] || 0) + 1;
+          return acc;
+        }, {}),
         ball: { x: Math.round(ball.x), y: Math.round(ball.y), vx: ball.vx, vy: ball.vy },
         paddle: { x: Math.round(paddle.x), w: Math.round(paddle.w) }
       };

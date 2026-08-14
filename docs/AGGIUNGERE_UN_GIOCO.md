@@ -165,8 +165,21 @@ Attenzione a un errore facile: se l'avversario simulato ri-sorteggia il proprio
 errore di mira a ogni frame, la media annulla l'errore e l'avversario diventa
 infallibile. L'errore va sorteggiato una volta per scambio e tenuto.
 
+## Verificare le meccaniche
+
+`test/regole.js` gira sulla stessa sandbox di `balance.js` (`test/sandbox.js`) e
+serve a controllare le regole che nel browser costerebbero partite intere: tutto
+ciò che compare solo ai livelli alti, o che dipende da eventi rari. Se il tuo
+gioco ha una meccanica del genere, esponila in `state()` e aggiungi lì il
+controllo.
+
+Un'avvertenza vista sbagliando: nella sandbox non c'è il motore, quindi dopo un
+`gameOver()` il gioco continua ad aggiornarsi. I controlli vanno fermati
+sull'esito, altrimenti si misura una partita che nella realtà è già finita.
+
 ## Prima di chiudere
 
-Esegui i due test: `node test/smoke.js` (la suite gira davvero) e
+Esegui i tre test: `node test/smoke.js` (la suite gira davvero),
+`node test/regole.js` (le meccaniche fanno quello che dicono) e
 `node test/balance.js` (la difficoltà è sensata). Verifica che l'elenco cresca,
 che il gioco non generi errori in console e che classifiche e livelli funzionino.
