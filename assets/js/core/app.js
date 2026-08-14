@@ -1,0 +1,196 @@
+/* Avvio della suite: collega DOM, motore e navigazione.
+   Caricato per ultimo, quando tutti i giochi si sono registrati. */
+(function () {
+  'use strict';
+
+  var el = {
+    grid: document.getElementById('game-grid'),
+    homeStats: document.getElementById('home-stats'),
+    viewHome: document.getElementById('view-home'),
+    viewGame: document.getElementById('view-game'),
+    back: document.getElementById('btn-back'),
+    sound: document.getElementById('btn-sound'),
+    profileBtn: document.getElementById('btn-profile'),
+    pause: document.getElementById('btn-pause'),
+    stage: document.getElementById('stage'),
+    canvas: document.getElementById('canvas'),
+    overlay: document.getElementById('overlay'),
+    overlayTitle: document.getElementById('overlay-title'),
+    overlayBody: document.getElementById('overlay-body'),
+    overlayActions: document.getElementById('overlay-actions'),
+    level: document.getElementById('hud-level'),
+    score: document.getElementById('hud-score'),
+    best: document.getElementById('hud-best'),
+    scoreLabel: document.getElementById('hud-score-label'),
+    board: document.getElementById('board'),
+    boardTitle: document.getElementById('board-title'),
+    clearBoard: document.getElementById('btn-clear-board'),
+    touchControls: document.getElementById('touch-controls'),
+    howto: document.getElementById('game-howto')
+  };
+
+  var current = null; // gioco aperto
+
+  TG.ui.init(el);
+  TG.input.init({ stage: el.stage, canvas: el.canvas, controls: el.touchControls });
+  TG.engine.init({ stage: el.stage, canvas: el.canvas });
+
+  /* ---------- navigazione ---------- */
+
+  function goHome() {
+    TG.engine.destroy();
+    current = null;
+    TG.ui.hideOverlay();
+    TG.ui.showView('home');
+    TG.ui.renderHome(openGame);
+    if (location.hash !== '') history.replaceState(null, '', location.pathname + location.search);
+  }
+
+  function openGame(id) {
+    var game = TG.registry.get(id);
+    if (!game) { goHome(); return; }
+    // il click sulla card cambia anche l'hash: senza questa guardia il
+    // successivo hashchange ricaricherebbe la partita appena avviata
+    if (current && current.id === id && TG.engine.getState() !== 'idle') return;
+    current = game;
+    TG.ui.showView('game');
+    TG.ui.setHudLabels(game);
+    TG.ui.setBest(TG.scores.best(game.id));
+    TG.ui.renderBoard(game.id);
+    TG.engine.load(game);
+    if (location.hash !== '#/g/' + id) location.hash = '#/g/' + id;
+    showReadyOverlay();
+  }
+
+  function levelLine(level) {
+    if (!current || !current.levelInfo) return '';
+    var info = current.levelInfo(level);
+    return info ? '\n' + info : '';
+  }
+
+  function showReadyOverlay() {
+    TG.ui.showOverlay({
+      title: current.icon + ' ' + current.title,
+      body: current.tagline + levelLine(1),
+      actions: [{
+        label: 'Gioca',
+        onClick: function () {
+          TG.sfx.unlock();
+          TG.ui.hideOverlay();
+          TG.engine.begin();
+        }
+      }]
+    });
+  }
+
+  function fromHash() {
+    var m = /^#\/g\/([a-z0-9_-]+)$/i.exec(location.hash);
+    if (m && TG.registry.get(m[1])) openGame(m[1]);
+    else goHome();
+  }
+
+  /* ---------- eventi del motore ---------- */
+
+  TG.engine.on('score', function (v) { TG.ui.setScore(v); });
+  TG.engine.on('level', function (v) { TG.ui.setLevel(v); });
+
+  TG.engine.on('levelclear', function (d) {
+    var body = (d.message ? d.message + '\n' : '') +
+      (d.bonus ? 'Bonus livello: <b>+' + d.bonus + '</b>\n' : '') +
+      'Punteggio: <b>' + d.score + '</b>' +
+      levelLine(d.level + 1);
+    TG.ui.showOverlay({
+      title: 'Livello ' + d.level + ' superato',
+      body: body,
+      actions: [
+        { label: 'Livello ' + (d.level + 1), onClick: function () { TG.ui.hideOverlay(); TG.engine.nextLevel(); } },
+        { label: 'Chiudi partita', ghost: true, onClick: function () { finish(d.score, d.level, 'Partita chiusa'); } }
+      ]
+    });
+  });
+
+  TG.engine.on('gameover', function (d) {
+    finish(d.score, d.level, d.message);
+  });
+
+  TG.engine.on('paused', function () {
+    TG.ui.showOverlay({
+      title: 'Pausa',
+      body: 'Punteggio attuale: <b>' + TG.engine.getScore() + '</b>',
+      actions: [
+        { label: 'Riprendi', onClick: function () { TG.ui.hideOverlay(); TG.engine.resume(); } },
+        { label: 'Ricomincia', ghost: true, onClick: function () { TG.ui.hideOverlay(); TG.engine.restart(); } },
+        { label: 'Esci', ghost: true, onClick: goHome }
+      ]
+    });
+  });
+
+  /* Fine partita: registra il risultato e mostra il verdetto. */
+  function finish(score, level, message) {
+    var res = TG.scores.submit(current.id, score, level);
+    TG.ui.setBest(TG.scores.best(current.id));
+    TG.ui.renderBoard(current.id, res.entry.id);
+    var body = (message ? message + '\n' : '') +
+      'Punteggio: <b>' + score + '</b> · livello <b>' + level + '</b>\n' +
+      (res.isRecord ? '🏆 Nuovo record personale!' :
+        (res.rank ? 'Sei ' + res.rank + '° in classifica.' : 'Niente classifica stavolta.'));
+    TG.ui.showOverlay({
+      title: 'Partita finita',
+      body: body,
+      actions: [
+        { label: 'Rigioca', onClick: function () { TG.ui.hideOverlay(); TG.engine.restart(); } },
+        { label: 'Altri giochi', ghost: true, onClick: goHome }
+      ]
+    });
+  }
+
+  /* ---------- comandi dell'interfaccia ---------- */
+
+  el.back.addEventListener('click', goHome);
+
+  el.pause.addEventListener('click', function () {
+    var s = TG.engine.getState();
+    if (s === 'running') TG.engine.pause();
+    else if (s === 'paused') { TG.ui.hideOverlay(); TG.engine.resume(); }
+  });
+
+  el.clearBoard.addEventListener('click', function () {
+    if (!current) return;
+    if (!window.confirm('Cancellare la classifica di ' + current.title + '?')) return;
+    TG.scores.clear(current.id);
+    TG.ui.renderBoard(current.id);
+    TG.ui.setBest(0);
+  });
+
+  el.profileBtn.addEventListener('click', function () {
+    var name = window.prompt('Come ti chiami? (max 14 caratteri)', TG.profile.getName());
+    if (name === null) return;
+    TG.profile.setName(name);
+    TG.ui.renderHomeStats();
+  });
+
+  function paintSoundBtn() {
+    var on = TG.sfx.isEnabled();
+    el.sound.textContent = on ? '🔊' : '🔇';
+    el.sound.classList.toggle('is-off', !on);
+  }
+
+  el.sound.addEventListener('click', function () {
+    TG.sfx.toggle();
+    paintSoundBtn();
+    if (TG.sfx.isEnabled()) TG.sfx.click();
+  });
+
+  window.addEventListener('keydown', function (e) {
+    if (e.code === 'Escape') {
+      var s = TG.engine.getState();
+      if (s === 'running') TG.engine.pause();
+      else if (s === 'paused') { TG.ui.hideOverlay(); TG.engine.resume(); }
+    }
+  });
+
+  window.addEventListener('hashchange', fromHash);
+
+  paintSoundBtn();
+  fromHash();
+})();

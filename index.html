@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0d1117">
+<meta name="description" content="ToiletGames — piccola suite di giochi single player da fare in cinque minuti.">
+<title>ToiletGames</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚽</text></svg>">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <button class="topbar__back" id="btn-back" hidden aria-label="Torna all'elenco">←</button>
+  <h1 class="topbar__logo"><span aria-hidden="true">🚽</span> Toilet<span class="accent">Games</span></h1>
+  <div class="topbar__actions">
+    <button class="icon-btn" id="btn-sound" title="Audio" aria-label="Attiva o disattiva l'audio">🔊</button>
+    <button class="icon-btn" id="btn-profile" title="Giocatore" aria-label="Cambia nome giocatore">👤</button>
+  </div>
+</header>
+
+<main id="view-home" class="view">
+  <p class="intro">Scegli un gioco. Ogni partita parte dal livello 1 e si fa più cattiva man mano che avanzi.</p>
+  <div class="grid" id="game-grid"></div>
+  <section class="panel" id="home-stats"></section>
+</main>
+
+<main id="view-game" class="view" hidden>
+  <div class="hud">
+    <div class="hud__item"><span class="hud__label">Livello</span><span class="hud__value" id="hud-level">1</span></div>
+    <div class="hud__item"><span class="hud__label" id="hud-score-label">Punti</span><span class="hud__value" id="hud-score">0</span></div>
+    <div class="hud__item"><span class="hud__label">Record</span><span class="hud__value" id="hud-best">0</span></div>
+    <div class="hud__spacer"></div>
+    <button class="icon-btn" id="btn-pause" aria-label="Pausa">⏸</button>
+  </div>
+
+  <div class="stage" id="stage">
+    <canvas id="canvas" aria-label="Area di gioco" role="img"></canvas>
+    <div class="overlay" id="overlay" hidden>
+      <div class="overlay__card">
+        <h2 class="overlay__title" id="overlay-title"></h2>
+        <p class="overlay__body" id="overlay-body"></p>
+        <div class="overlay__actions" id="overlay-actions"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="touch-controls" id="touch-controls" hidden></div>
+
+  <section class="panel">
+    <div class="panel__head">
+      <h2 id="board-title">Classifica</h2>
+      <button class="link-btn" id="btn-clear-board">Azzera</button>
+    </div>
+    <ol class="board" id="board"></ol>
+    <p class="hint" id="game-howto"></p>
+  </section>
+</main>
+
+<script src="assets/js/core/util.js"></script>
+<script src="assets/js/core/storage.js"></script>
+<script src="assets/js/core/sfx.js"></script>
+<script src="assets/js/core/profile.js"></script>
+<script src="assets/js/core/scores.js"></script>
+<script src="assets/js/core/registry.js"></script>
+<script src="assets/js/core/input.js"></script>
+<script src="assets/js/core/engine.js"></script>
+<script src="assets/js/core/ui.js"></script>
+
+<!-- Giochi: aggiungere qui una riga per ogni nuovo gioco -->
+<script src="assets/js/games/serpente.js"></script>
+<script src="assets/js/games/pong.js"></script>
+<script src="assets/js/games/memoria.js"></script>
+<script src="assets/js/games/mattoni.js"></script>
+
+<script src="assets/js/core/app.js"></script>
+</body>
+</html>
