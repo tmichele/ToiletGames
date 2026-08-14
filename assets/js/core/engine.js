@@ -215,6 +215,16 @@ TG.engine = (function () {
     resume: resume,
     destroy: destroy,
     resize: resize,
+    /* Stato leggibile dall'esterno: serve ai test e per tarare la difficoltà
+       dalla console. I giochi possono esporre i propri dati con state(). */
+    inspect: function () {
+      return {
+        state: state,
+        level: level,
+        score: score,
+        game: instance && instance.state ? instance.state() : null
+      };
+    },
     getState: function () { return state; },
     getLevel: function () { return level; },
     getScore: function () { return score; },

@@ -27,7 +27,7 @@ TG.registry.register({
   icon: '🎲',
   tagline: 'Una riga che spiega il gioco nella card.',
   scoreLabel: 'Punti',            // etichetta nell'HUD
-  controls: 'dpad',               // 'dpad' | 'lr' | 'pointer' | 'action' | 'none'
+  controls: 'dpad',               // 'dpad' | 'lr' | 'lr-big' | 'pointer' | 'action' | 'none'
   actionLabel: '',                // se valorizzato aggiunge il pulsante azione
   viewport: { w: 360, h: 480 },   // coordinate logiche: il canvas si adatta da solo
   howto: '<b>Comandi:</b> frecce o swipe.',
@@ -57,7 +57,11 @@ TG.registry.register({
       ctx.fillRect(0, 0, api.width, api.height);
     }
 
-    return { start: start, update: update, draw: draw };
+    function state() {            // opzionale ma consigliato: vedi «Tarare la difficoltà»
+      return { /* punteggi, posizioni, tutto ciò che vuoi poter misurare */ };
+    }
+
+    return { start: start, update: update, draw: draw, state: state };
   }
 });
 
@@ -113,7 +117,39 @@ livello: così la classifica premia chi arriva più in fondo.
 - `api.input.takeDigit()` — tasti 1-9, alternativa da tastiera ai tap.
 - `api.input.pointer` — `{x, y, down}` per trascinamenti (racchette e simili).
 
+I valori di `controls` decidono i comandi a schermo: `dpad` (croce direzionale),
+`lr` (sinistra/destra piccoli), `lr-big` (due tasti che si dividono tutta la
+larghezza, per i giochi dove serve un bersaglio grande per il pollice),
+`pointer` e `none` (nessun pulsante). Con `actionLabel` valorizzato si aggiunge
+il pulsante azione.
+
+## Tarare la difficoltà
+
+Indovinare a occhio se il livello 1 è troppo duro non funziona: `test/balance.js`
+carica i giochi fuori dal browser e li fa giocare da tre bot (scarso, medio,
+bravo) per decine di partite a livello, stampando quante ne vincono.
+
+Per misurare anche il tuo gioco servono due cose:
+
+1. il metodo `state()` nell'istanza, che restituisce quello che il bot deve
+   vedere (posizione della palla, punteggi, vite…);
+2. una voce in `BOTS` dentro `test/balance.js` che, dato quello stato, muova
+   `api.input` come farebbe una persona.
+
+```
+node test/balance.js miogioco 1 10
+```
+
+Una colonna che crolla da 100% a 0% fra due livelli è uno scalino, non una
+progressione. E le partite marcate «infinite» sono stalli: vanno corretti nel
+gioco, non tollerati nel test.
+
+Attenzione a un errore facile: se l'avversario simulato ri-sorteggia il proprio
+errore di mira a ogni frame, la media annulla l'errore e l'avversario diventa
+infallibile. L'errore va sorteggiato una volta per scambio e tenuto.
+
 ## Prima di chiudere
 
-Esegui il test di fumo: `node test/smoke.js`. Verifica che l'elenco cresca, che
-il gioco non generi errori in console e che classifiche e livelli funzionino.
+Esegui i due test: `node test/smoke.js` (la suite gira davvero) e
+`node test/balance.js` (la difficoltà è sensata). Verifica che l'elenco cresca,
+che il gioco non generi errori in console e che classifiche e livelli funzionino.

@@ -31,7 +31,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   console.log('\n[home]');
   const cards = await page.$$('.card');
-  check('4 giochi in elenco', cards.length === 4, cards.length + ' trovati');
+  check('5 giochi in elenco', cards.length === 5, cards.length + ' trovati');
   check('titoli presenti', (await page.textContent('#game-grid')).includes('Serpente'));
 
   const canvasHash = () => page.evaluate(() => {
@@ -173,6 +173,62 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   check('rigioca riparte dal livello 1', (await page.textContent('#hud-level')) === '1');
   check('rigioca azzera il punteggio', (await page.textContent('#hud-score')) === '0');
   await page.click('#btn-back');
+
+  // ---- Air Hockey: la CPU segna, il disco non si incastra ----
+  console.log('\n[hockey]');
+  await page.goto(URL + '#/g/hockey');
+  await sleep(400);
+  await page.click('.btn:has-text("Gioca")');
+  let hkGoal = false, stuck = false;
+  for (let i = 0; i < 45; i++) {
+    await sleep(1000);
+    const s = await page.evaluate(() => TG.engine.inspect());
+    if (s.game.cpuGoals > 0 || s.game.myGoals > 0) hkGoal = true;
+    if (s.game.puck.x < 0 || s.game.puck.x > 360 || s.game.puck.y < -20 || s.game.puck.y > 540) stuck = true;
+    if (s.state !== 'running') break;
+  }
+  check('il disco resta dentro il tavolo', !stuck);
+  check('la partita produce gol', hkGoal);
+
+  // ---- controlli del pong: due tasti larghi, niente trascinamento ----
+  console.log('\n[controlli]');
+  await page.goto(URL + '#/g/pong');
+  await sleep(400);
+  const bigBtns = await page.$$('#touch-controls .bigpad__btn');
+  check('pong ha due tasti grandi', bigBtns.length === 2, bigBtns.length + ' trovati');
+  const wide = await page.$eval('#touch-controls .bigpad', el => el.getBoundingClientRect().width);
+  const stageW = await page.$eval('#stage', el => el.getBoundingClientRect().width);
+  check('i tasti occupano tutta la larghezza', Math.abs(wide - stageW) < 2, wide + ' vs ' + stageW);
+  await page.click('.btn:has-text("Gioca")');
+  await sleep(300);
+  const before = await page.evaluate(() => TG.engine.inspect().game.player.x);
+  const cbox = await page.$eval('#canvas', el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+  await page.mouse.move(cbox.x + 20, cbox.y + cbox.h - 40);
+  await page.mouse.down();
+  await page.mouse.move(cbox.x + 20, cbox.y + cbox.h - 40, { steps: 5 });
+  await sleep(400);
+  await page.mouse.up();
+  const after = await page.evaluate(() => TG.engine.inspect().game.player.x);
+  check('il trascinamento non muove la racchetta', Math.abs(after - before) < 3, before + ' -> ' + after);
+
+  // ---- mattoni: combo e malus ----
+  console.log('\n[combo mattoni]');
+  await page.goto(URL + '#/g/mattoni');
+  await sleep(400);
+  await page.click('.btn:has-text("Gioca")');
+  await sleep(200);
+  await page.keyboard.press('Space');
+  let sawMalus = false, peak = 0;
+  for (let i = 0; i < 30; i++) {
+    await sleep(500);
+    const s = await page.evaluate(() => TG.engine.inspect());
+    peak = Math.max(peak, s.game.combo);
+    if (s.score > 0 && s.game.combo === 0) sawMalus = true;  // combo azzerata dal tocco
+    if (!s.game.launched) await page.keyboard.press('Space');
+    if (s.state !== 'running') break;
+  }
+  check('la combo cresce rompendo i mattoni', peak >= 1, 'massimo ' + peak);
+  check('il tocco di racchetta azzera la combo', sawMalus);
 
   // ---- persistenza + deep link ----
   console.log('\n[persistenza]');

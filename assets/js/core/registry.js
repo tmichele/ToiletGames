@@ -21,6 +21,8 @@
      update(dt)     dt in secondi (già limitato dal motore)
      draw(ctx)      disegnare in coordinate logiche (viewport)
      destroy()      opzionale: liberare timer/listener propri
+     state()        opzionale: dati interni per test e taratura,
+                    leggibili con TG.engine.inspect().game
 
    Comunicazione verso il motore tramite l'oggetto `api` (vedi engine.js). */
 TG.registry = (function () {

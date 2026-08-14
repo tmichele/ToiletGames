@@ -1,0 +1,232 @@
+/* Banco di prova per la difficoltà.
+
+   La logica dei giochi è JavaScript puro (il disegno è l'unica parte che tocca
+   il canvas), quindi si può eseguire fuori dal browser: qui i giochi vengono
+   caricati in una sandbox, pilotati da un giocatore simulato e fatti girare a
+   tempo compresso. Serve a rispondere a domande come "al livello 1 un giocatore
+   medio vince?" senza doversi mettere a giocare cento partite.
+
+   Uso:  node test/balance.js            tutti i giochi, livelli 1..10
+         node test/balance.js pong 1 5   solo pong, livelli 1..5 */
+
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const ROOT = path.resolve(__dirname, '..');
+const DT = 1 / 60;            // passo fisso di simulazione
+const MAX_SECONDS = 240;      // taglio di sicurezza per partite che non finiscono
+const MATCHES = 40;           // partite per livello e per profilo
+
+/* ---------- caricamento dei giochi in sandbox ---------- */
+
+function loadGames() {
+  const ctx = { console, Math, Date, JSON, isNaN, parseInt, parseFloat };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+
+  const run = (rel) => vm.runInContext(fs.readFileSync(path.join(ROOT, rel), 'utf8'), ctx, { filename: rel });
+
+  run('assets/js/core/util.js');
+
+  const defs = {};
+  ctx.TG.registry = { register: (def) => { defs[def.id] = def; } };
+
+  fs.readdirSync(path.join(ROOT, 'assets/js/games'))
+    .filter((f) => f.endsWith('.js'))
+    .forEach((f) => run(path.join('assets/js/games', f)));
+
+  return { defs, util: ctx.TG.util };
+}
+
+/* ---------- finti servizi del motore ---------- */
+
+const SFX = new Proxy({}, { get: () => () => {} });
+
+function makeInput() {
+  return {
+    pointer: { x: 0, y: 0, down: false, inside: true, moved: true },
+    held: {},
+    queue: [],
+    press(a) { this.queue.push(a); },
+    isDown(a) { return !!this.held[a]; },
+    take() { return this.queue.length ? this.queue.shift() : null; },
+    takeTap() { return null; },
+    takeDigit() { return null; },
+    reset() {}
+  };
+}
+
+/* Una partita: il bot guida, il gioco gira, si guarda come finisce. */
+function playMatch(def, util, level, bot) {
+  const input = makeInput();
+  let score = 0;
+  let outcome = null;
+
+  const api = {
+    width: def.viewport.w,
+    height: def.viewport.h,
+    util,
+    sfx: SFX,
+    input,
+    level,
+    score,
+    addScore(n) { score = Math.max(0, score + Math.round(n || 0)); api.score = score; },
+    setScore(n) { score = Math.max(0, Math.round(n || 0)); api.score = score; },
+    levelComplete(o) { if (!outcome) outcome = { win: true, bonus: (o && o.bonus) || 0 }; },
+    gameOver() { if (!outcome) outcome = { win: false }; }
+  };
+
+  const game = def.create(api);
+  game.start(level);
+  if (!game.state) throw new Error(def.id + ': serve state() per misurare la difficoltà');
+
+  const brain = bot(api, game);
+  let t = 0;
+  while (!outcome && t < MAX_SECONDS) {
+    brain(game.state(), DT);
+    game.update(DT);
+    t += DT;
+  }
+  return { win: !!(outcome && outcome.win), timeout: !outcome, seconds: t, score, state: game.state() };
+}
+
+/* ---------- giocatori simulati ----------
+   reaction: ritardo con cui il bot "vede" la palla
+   error:    quanto sbaglia la posizione
+   speed:    quanto in fretta muove la mano */
+
+const PROFILES = [
+  { name: 'scarso', reaction: 0.40, error: 46, speed: 240 },
+  { name: 'medio', reaction: 0.22, error: 22, speed: 340 },
+  { name: 'bravo', reaction: 0.10, error: 8, speed: 480 }
+];
+
+/* Ritardo di reazione: il bot insegue la posizione di qualche istante fa. */
+function delayLine(profile) {
+  const buf = [];
+  return function (value, dt) {
+    buf.push({ v: value, t: (buf.length ? buf[buf.length - 1].t : 0) + dt });
+    const now = buf[buf.length - 1].t;
+    while (buf.length > 1 && now - buf[0].t > profile.reaction) buf.shift();
+    return buf[0].v;
+  };
+}
+
+/* Il bot muove il puntatore verso il bersaglio a velocità limitata: è così che
+   un umano gioca, e mantiene confrontabili i risultati fra i giochi. */
+function makeHand(api, profile, startX, startY) {
+  const p = api.input.pointer;
+  p.x = startX; p.y = startY; p.down = true;
+  return function (tx, ty, dt) {
+    const dx = tx - p.x, dy = ty - p.y;
+    const d = Math.hypot(dx, dy);
+    const step = profile.speed * dt;
+    if (d <= step || d === 0) { p.x = tx; p.y = ty; }
+    else { p.x += dx / d * step; p.y += dy / d * step; }
+  };
+}
+
+const BOTS = {
+  /* Il pong si gioca solo a tasti: il bot li tiene premuti come farebbe un
+     pollice, quindi la sua velocità è quella della racchetta, non della mano. */
+  pong: (profile) => (api, game) => {
+    const delay = delayLine(profile);
+    const err = (Math.random() * 2 - 1) * profile.error;
+    return function (s, dt) {
+      const target = delay(s.ball.x, dt) + err;
+      const dx = target - s.player.x;
+      api.input.held.left = dx < -6;
+      api.input.held.right = dx > 6;
+    };
+  },
+
+  mattoni: (profile) => (api, game) => {
+    const hand = makeHand(api, profile, api.width / 2, api.height - 30);
+    const delay = delayLine(profile);
+    const err = (Math.random() * 2 - 1) * profile.error;
+    return function (s, dt) {
+      if (!s.launched) api.input.press('action');   // rilancia dopo ogni vita
+      const seen = delay(s.ball.x, dt);
+      hand(seen + err, api.height - 30, dt);
+    };
+  },
+
+  /* Il bot dell'hockey ragiona come la CPU: si mette dietro al disco e poi ci
+     passa attraverso verso la porta avversaria; altrimenti torna a coprire. */
+  hockey: (profile) => (api, game) => {
+    const mid = api.height / 2;
+    const hand = makeHand(api, profile, api.width / 2, api.height - 70);
+    const delay = delayLine(profile);
+    const err = (Math.random() * 2 - 1) * profile.error;
+    let charging = false;
+    return function (s, dt) {
+      const px = delay(s.puck.x, dt) + err;
+      const py = s.puck.y;
+      const p = api.input.pointer;
+      if (py > mid + 6) {
+        // mira il lato di porta lasciato scoperto dal portiere avversario
+        const half = s.goalCpu / 2;
+        const aim = api.width / 2 + (s.cpu.x < api.width / 2 ? 1 : -1) * half * 0.7;
+        const dx = px - aim, dy = py - 0;          // dalla porta avversaria al disco
+        const len = Math.hypot(dx, dy) || 1;
+        const behind = { x: px + dx / len * 26, y: py + dy / len * 26 };
+        if (!charging && Math.hypot(p.x - behind.x, p.y - behind.y) < 18) charging = true;
+        if (charging) hand(aim, 0, dt);            // attraversa il disco e tira
+        else hand(behind.x, behind.y, dt);
+      } else {
+        charging = false;
+        hand(api.width / 2 + (px - api.width / 2) * 0.6, api.height - 60, dt);
+      }
+    };
+  }
+};
+
+/* ---------- esecuzione ---------- */
+
+function main() {
+  const { defs, util } = loadGames();
+  const only = process.argv[2];
+  const from = parseInt(process.argv[3], 10) || 1;
+  const to = parseInt(process.argv[4], 10) || 10;
+
+  const ids = Object.keys(BOTS).filter((id) => (!only || id === only) && defs[id]);
+  if (!ids.length) {
+    console.error('Nessun gioco da provare. Disponibili: ' + Object.keys(BOTS).join(', '));
+    process.exit(1);
+  }
+
+  ids.forEach((id) => {
+    const def = defs[id];
+    console.log('\n=== ' + def.title + ' (' + MATCHES + ' partite per casella) ===');
+    console.log('livello  ' + PROFILES.map((p) => p.name.padEnd(14)).join('') + 'note');
+
+    for (let level = from; level <= to; level++) {
+      const cells = [];
+      let timeouts = 0;
+      let seconds = 0;
+      PROFILES.forEach((profile) => {
+        let wins = 0;
+        for (let i = 0; i < MATCHES; i++) {
+          const r = playMatch(def, util, level, BOTS[id](profile));
+          if (r.win) wins++;
+          if (r.timeout) timeouts++;
+          seconds += r.seconds;
+        }
+        const pct = Math.round(wins / MATCHES * 100);
+        cells.push((pct + '% vinte').padEnd(14));
+      });
+      const avg = (seconds / (MATCHES * PROFILES.length)).toFixed(0);
+      console.log(
+        String(level).padEnd(9) + cells.join('') +
+        (timeouts ? timeouts + ' partite infinite! ' : '') + '~' + avg + 's a partita'
+      );
+    }
+  });
+
+  console.log('\nLettura: al livello 1 un giocatore medio dovrebbe vincere quasi sempre,');
+  console.log('e la percentuale deve calare salendo di livello. Le "partite infinite"');
+  console.log('sono situazioni di stallo: vanno corrette, non tollerate.');
+}
+
+main();

@@ -6,14 +6,26 @@
 
 var TARGET = 5; // punti per vincere il livello
 
+var SHRINK_FLOOR = 34;  // px: sotto questa misura le racchette non scendono
+
 function config(level) {
+  var npcW = Math.min(46 + level * 4, 84);
+  /* L'errore di lettura va misurato in "mezze racchette": se scende sotto la
+     metà della racchetta, la CPU para comunque e diventa infallibile di colpo.
+     Tenendolo sopra 1 l'avversario sbaglia sempre qualcosa, e la difficoltà
+     arriva da velocità e prontezza invece che dall'infallibilità. */
+  var errFactor = Math.max(1.1, 2.6 - level * 0.18);
   return {
     level: level,
-    ballSpeed: Math.min(190 + level * 16, 430),
-    npcSpeed: Math.min(120 + level * 24, 360),
-    npcError: Math.max(3, 48 - level * 4.5),   // px di errore di mira
-    npcLag: Math.max(0.05, 0.34 - level * 0.03), // s tra una correzione e l'altra
-    paddleW: Math.max(44, 86 - level * 3)
+    ballSpeed: Math.min(180 + level * 13, 380),
+    npcSpeed: Math.min(110 + level * 24, 350),
+    npcW: npcW,
+    npcError: npcW / 2 * errFactor,
+    npcLag: Math.max(0.06, 0.40 - level * 0.035), // s tra una correzione e l'altra
+    paddleW: Math.max(56, 92 - level * 2.5),      // la tua
+    handSpeed: Math.min(400 + level * 10, 520),   // quanto scorre la racchetta
+    shrinkEvery: Math.max(4, 10 - level * 0.5),   // s fra due accorciamenti
+    shrinkStep: 4                                 // px persi ogni volta, per entrambi
   };
 }
 
@@ -23,16 +35,20 @@ TG.registry.register({
   icon: '🏓',
   tagline: 'Cinque punti contro una CPU che impara in fretta.',
   scoreLabel: 'Punti',
-  controls: 'lr',
+  controls: 'lr-big',
   viewport: { w: 360, h: 480 },
-  howto: '<b>Comandi:</b> trascina il dito sul campo, frecce ←/→ o pad a schermo. ' +
+  howto: '<b>Comandi:</b> i due tasti ◀ ▶ sotto il campo, oppure le frecce ←/→. ' +
     'Vinci il livello arrivando a ' + TARGET + ' punti prima della CPU. ' +
-    'Il punto di impatto sulla racchetta decide l\'angolo di rimbalzo.',
+    'Il punto di impatto sulla racchetta decide l\'angolo di rimbalzo: ' +
+    'colpire di lato manda la palla di traverso. ' +
+    'Ogni pochi secondi <b>entrambe</b> le racchette si accorciano, quindi ' +
+    'tirarla per le lunghe non conviene a nessuno dei due.',
 
   levelInfo: function (level) {
     var c = config(level);
     return 'Livello ' + level + ': CPU a ' + Math.round(c.npcSpeed) + ' px/s, ' +
-      'racchetta ' + Math.round(c.paddleW) + ' px';
+      'racchetta ' + Math.round(c.paddleW) + ' px, ' +
+      'si accorcia ogni ' + c.shrinkEvery.toFixed(0) + 's';
   },
 
   create: function (api) {
@@ -41,6 +57,7 @@ TG.registry.register({
     var PLAYER_Y = H - 34, NPC_Y = 24;
 
     var cfg, player, npc, ball, myPts, cpuPts, serveTimer, npcTarget, npcTimer, shake;
+    var npcTracking, npcBias, shrinkTimer, shrinkFlash;
 
     function resetBall(towardPlayer) {
       ball = {
@@ -60,36 +77,65 @@ TG.registry.register({
       shake = 0;
       npcTimer = 0;
       npcTarget = W / 2;
+      npcTracking = false;
+      npcBias = 0;
+      shrinkTimer = cfg.shrinkEvery;
+      shrinkFlash = 0;
       player = { x: W / 2, w: cfg.paddleW };
-      npc = { x: W / 2, w: Math.max(50, cfg.paddleW + 6) };
+      npc = { x: W / 2, w: cfg.npcW };
       resetBall(true);
     }
 
+    /* Solo tasti: niente trascinamento del dito. Col touch la racchetta
+       seguirebbe il polpastrello all'istante e il gioco perderebbe il suo
+       nocciolo, cioè arrivare in tempo. */
     function movePlayer(dt) {
-      var p = api.input.pointer;
-      if (p.down) {
-        // il dito trascina: inseguimento morbido per non "teletrasportare"
-        player.x = api.util.lerp(player.x, p.x, Math.min(1, dt * 18));
-      }
-      var speed = 320 * dt;
+      var speed = cfg.handSpeed * dt;
       if (api.input.isDown('left')) player.x -= speed;
       if (api.input.isDown('right')) player.x += speed;
       player.x = api.util.clamp(player.x, player.w / 2, W - player.w / 2);
     }
 
+    /* Le racchette si accorciano man mano, per tutti e due: uno scambio
+       infinito diventa via via impossibile da tenere. */
+    function shrinkPaddles(dt) {
+      shrinkTimer -= dt;
+      if (shrinkTimer > 0) return;
+      shrinkTimer = cfg.shrinkEvery;
+      var floorPlayer = Math.min(SHRINK_FLOOR, cfg.paddleW);
+      var floorNpc = Math.min(SHRINK_FLOOR, cfg.npcW);
+      if (player.w <= floorPlayer && npc.w <= floorNpc) return;
+      player.w = Math.max(floorPlayer, player.w - cfg.shrinkStep);
+      npc.w = Math.max(floorNpc, npc.w - cfg.shrinkStep);
+      shrinkFlash = 0.4;
+      api.sfx.tone(320, 0.12, 'triangle', 0.08, 220);
+    }
+
     function moveNpc(dt) {
+      /* L'errore di lettura si sorteggia UNA volta per scambio, quando la palla
+         parte verso la CPU, e resta lo stesso fino al rimbalzo. Se lo si
+         ri-sorteggiasse a ogni correzione, la media tenderebbe alla posizione
+         esatta e l'avversario non sbaglierebbe mai un colpo. */
+      var goingUp = ball.vy < 0;
+      if (goingUp && !npcTracking) {
+        npcTracking = true;
+        npcBias = api.util.randFloat(-cfg.npcError, cfg.npcError);
+      } else if (!goingUp) {
+        npcTracking = false;
+      }
+
       npcTimer -= dt;
       if (npcTimer <= 0) {
         npcTimer = cfg.npcLag;
-        if (ball.vy < 0) {
-          // la palla sale: stima dove arriverà, con un errore che cala di livello
+        if (goingUp) {
+          // la palla sale: stima dove arriverà, con l'errore di questo scambio
           var t = (NPC_Y + PADDLE_H - ball.y) / ball.vy;
           var predicted = ball.x + ball.vx * t;
           // rimbalzi sulle pareti laterali, riflessi a fisarmonica
           var span = W - BALL_R * 2;
           var rel = ((predicted - BALL_R) % (span * 2) + span * 2) % (span * 2);
           predicted = BALL_R + (rel > span ? span * 2 - rel : rel);
-          npcTarget = predicted + api.util.randFloat(-cfg.npcError, cfg.npcError);
+          npcTarget = predicted + npcBias;
         } else {
           npcTarget = W / 2 + api.util.randFloat(-40, 40); // rientra al centro
         }
@@ -140,8 +186,10 @@ TG.registry.register({
 
       movePlayer(dt);
       moveNpc(dt);
+      if (shrinkFlash > 0) shrinkFlash -= dt;
 
       if (serveTimer > 0) { serveTimer -= dt; return; }
+      shrinkPaddles(dt);   // scorre solo a palla in gioco, non durante la rimessa
 
       ball.x += ball.vx * dt;
       ball.y += ball.vy * dt;
@@ -212,7 +260,18 @@ TG.registry.register({
       ctx.restore();
     }
 
-    return { start: start, update: update, draw: draw };
+    function state() {
+      return {
+        myPts: myPts, cpuPts: cpuPts,
+        ball: { x: Math.round(ball.x), y: Math.round(ball.y), vy: Math.round(ball.vy) },
+        player: { x: Math.round(player.x), w: Math.round(player.w) },
+        npc: { x: Math.round(npc.x), w: Math.round(npc.w) },
+        serving: serveTimer > 0,
+        shrink: Math.round(shrinkTimer * 10) / 10
+      };
+    }
+
+    return { start: start, update: update, draw: draw, state: state };
   }
 });
 

@@ -6,15 +6,18 @@
 
 var COLS = 7;
 var ROW_COLORS = ['#f87171', '#fb923c', '#fbbf24', '#a3e635', '#4ade80', '#22d3ee', '#c084fc'];
+var COMBO_MAX = 5;    // oltre questo il moltiplicatore non cresce più
 
 function config(level) {
   return {
     level: level,
     rows: Math.min(3 + Math.floor((level - 1) / 2), 7),
-    ballSpeed: Math.min(210 + level * 14, 420),
-    paddleW: Math.max(48, 84 - level * 2.5),
-    armored: level >= 4 ? Math.min(0.15 + (level - 4) * 0.08, 0.6) : 0, // quota di mattoni a 2 colpi
-    extraLifeEvery: 3
+    ballSpeed: Math.min(170 + level * 13, 400),
+    paddleW: Math.max(52, 92 - level * 2.5),
+    armored: level >= 5 ? Math.min(0.12 + (level - 5) * 0.07, 0.55) : 0, // quota di mattoni a 2 colpi
+    extraLifeEvery: 3,
+    brickPoints: 10 * level,
+    paddleMalus: 5 * level   // costo di ogni ritorno sulla racchetta
   };
 }
 
@@ -29,12 +32,16 @@ TG.registry.register({
   viewport: { w: 360, h: 480 },
   howto: '<b>Comandi:</b> trascina il dito, frecce ←/→ o pad a schermo. ' +
     'Le vite valgono per tutta la partita: ne guadagni una ogni 3 livelli. ' +
-    'I mattoni scuri reggono due colpi.',
+    'I mattoni scuri reggono due colpi. ' +
+    '<b>Combo:</b> ogni mattone rotto senza tornare sulla racchetta vale di più ' +
+    '(fino a ×' + COMBO_MAX + '), mentre <b>ogni tocco di racchetta toglie punti</b> ' +
+    'e azzera il moltiplicatore. Conviene mirare e far lavorare i rimbalzi.',
 
   levelInfo: function (level) {
     var c = config(level);
     return 'Livello ' + level + ': ' + c.rows + ' file, pallina a ' +
-      Math.round(c.ballSpeed) + ' px/s' + (c.armored ? ', mattoni corazzati' : '');
+      Math.round(c.ballSpeed) + ' px/s' + (c.armored ? ', mattoni corazzati' : '') +
+      ' · mattone ' + c.brickPoints + ' pt, tocco di racchetta −' + c.paddleMalus;
   },
 
   create: function (api) {
@@ -42,7 +49,7 @@ TG.registry.register({
     var PADDLE_Y = H - 30, PADDLE_H = 10, BALL_R = 5;
     var TOP = 46, BRICK_H = 18, GAP = 4;
 
-    var cfg, paddle, ball, bricks, lives, launched, blink, stall;
+    var cfg, paddle, ball, bricks, lives, launched, blink, stall, combo, floaters;
 
     /* Riporta la pallina alla velocità del livello evitando traiettorie
        quasi orizzontali, che produrrebbero scambi infiniti. */
@@ -98,6 +105,8 @@ TG.registry.register({
       else if (level % cfg.extraLifeEvery === 1 && level > 1) lives = Math.min(lives + 1, 5);
       blink = 0;
       stall = 0;
+      combo = 0;
+      floaters = [];
       paddle = { x: W / 2, w: cfg.paddleW };
       buildBricks();
       resetBall();
@@ -125,7 +134,14 @@ TG.registry.register({
       stall = 0;
       if (b.hp <= 0) {
         b.alive = false;
-        api.addScore(10 * cfg.level);
+        combo++;
+        var mult = Math.min(combo, COMBO_MAX);
+        var pts = cfg.brickPoints * mult;
+        api.addScore(pts);
+        floaters.push({
+          text: '+' + pts + (mult > 1 ? ' \u00d7' + mult : ''),
+          x: b.x + b.w / 2, y: b.y, t: 0.7, color: mult > 1 ? '#fbbf24' : '#4ade80'
+        });
         api.sfx.pick();
         if (remaining() === 0) {
           api.levelComplete({
@@ -166,6 +182,12 @@ TG.registry.register({
       var a;
       while ((a = api.input.take())) { if (a === 'action') launch(); }
       if (blink > 0) blink -= dt;
+
+      for (var f = floaters.length - 1; f >= 0; f--) {
+        floaters[f].t -= dt;
+        floaters[f].y -= 26 * dt;
+        if (floaters[f].t <= 0) floaters.splice(f, 1);
+      }
 
       var p = api.input.pointer;
       if (p.down) {
@@ -210,6 +232,16 @@ TG.registry.register({
           ball.vy = -Math.cos(angle) * ball.speed;
           ball.y = PADDLE_Y - BALL_R;
           api.sfx.bounce();
+          /* Ogni ritorno sulla racchetta costa: così conviene mirare e
+             incatenare più mattoni per volo invece di palleggiare a caso. */
+          if (cfg.paddleMalus > 0) {
+            api.addScore(-cfg.paddleMalus);
+            floaters.push({
+              text: '\u2212' + cfg.paddleMalus, x: paddle.x, y: PADDLE_Y - 10,
+              t: 0.7, color: '#f87171'
+            });
+          }
+          combo = 0;
         }
       }
 
@@ -249,6 +281,22 @@ TG.registry.register({
       ctx.textAlign = 'right';
       ctx.fillText('mattoni ' + remaining(), W - 8, 18);
 
+      if (combo > 1) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = 'bold 13px ui-monospace, monospace';
+        ctx.fillText('combo \u00d7' + Math.min(combo, COMBO_MAX), W / 2, 18);
+      }
+
+      floaters.forEach(function (fl) {
+        ctx.globalAlpha = api.util.clamp(fl.t / 0.7, 0, 1);
+        ctx.fillStyle = fl.color;
+        ctx.font = 'bold 12px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(fl.text, fl.x, fl.y);
+        ctx.globalAlpha = 1;
+      });
+
       if (!launched) {
         ctx.textAlign = 'center';
         ctx.fillStyle = 'rgba(230,237,243,0.75)';
@@ -256,7 +304,15 @@ TG.registry.register({
       }
     }
 
-    return { start: start, update: update, draw: draw };
+    function state() {
+      return {
+        lives: lives, bricks: remaining(), combo: combo, launched: launched,
+        ball: { x: Math.round(ball.x), y: Math.round(ball.y), vx: ball.vx, vy: ball.vy },
+        paddle: { x: Math.round(paddle.x), w: Math.round(paddle.w) }
+      };
+    }
+
+    return { start: start, update: update, draw: draw, state: state };
   }
 });
 

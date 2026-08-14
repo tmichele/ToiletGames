@@ -129,6 +129,24 @@ TG.input = (function () {
     if (kind === 'none' || kind === 'pointer') { controlsEl.hidden = true; return; }
     controlsEl.hidden = false;
 
+    // due tasti che si dividono tutta la larghezza disponibile
+    if (kind === 'lr-big') {
+      controlsEl.classList.add('touch-controls--big');
+      var big = document.createElement('div');
+      big.className = 'bigpad';
+      ['left', 'right'].forEach(function (dir) {
+        var b = document.createElement('button');
+        b.className = 'bigpad__btn';
+        b.dataset.dir = dir;
+        b.textContent = dir === 'left' ? '◀' : '▶';
+        b.setAttribute('aria-label', dir);
+        bindHold(b, dir);
+        big.appendChild(b);
+      });
+      controlsEl.appendChild(big);
+      return;
+    }
+
     if (kind === 'dpad' || kind === 'lr') {
       var pad = document.createElement('div');
       pad.className = 'pad';
