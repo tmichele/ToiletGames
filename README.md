@@ -13,12 +13,19 @@ da `file://`) e giochi.
 | 🧠 **Memoria** | Ripeti la sequenza luminosa | Da 4 a 9 riquadri, sequenze più lunghe, riproduzione più rapida, tempo limite per tocco |
 | 🧱 **Mattoni** | Breakout con combo e mattoni speciali | Più file, mattoni turbo dal 2° livello, impazziti dal 3°, corazzati dal 5°; le vite valgono per tutta la partita |
 | 🏒 **Air Hockey** | Tavolo ad aria contro la CPU | Il portiere avversario copre meglio la porta, rientra più in fretta dopo il tiro, la sua porta si restringe |
+| 🐹 **Talpe** | Whack a mole a tempo | Talpe più rapide e più numerose, bombe dal 3° livello, obiettivo più alto e meno tempo |
+| 🔴 **Forza 4** | Quattro di fila, vs CPU o in due | La CPU guarda sempre più mosse avanti (minimax) e smette di svarionare |
+
+**Forza 4** è l'unico a due modalità: si sceglie a inizio partita fra sfida alla
+CPU e due giocatori sullo stesso dispositivo, a mosse alternate. In due, il
+livello sale quando vince il rosso, ed è il suo risultato a finire in classifica.
 
 In **Mattoni** i punti seguono la mira: ogni mattone rotto senza tornare sulla
 racchetta vale di più (fino a ×5), mentre ogni tocco di racchetta toglie punti e
 azzera il moltiplicatore. Il muro poi non è tutto uguale: i mattoni **turbo**
 (»») accelerano la pallina per il resto del livello, gli **impazziti** (?) la
-rimandano a un angolo qualsiasi, i **corazzati** reggono due colpi. Valgono metà
+rimandano a un angolo qualsiasi, i **fantasma** (◌) la fanno sparire a
+intermittenza per dieci secondi, i **corazzati** reggono due colpi. Valgono metà
 punti in più, ma decidono che partita sarà: la velocità con cui ti ritrovi a
 giocare dipende da quali mattoni hai scelto di rompere. **Pong** e **Mattoni** si giocano solo con i due tasti
 sotto il campo, che si dividono tutta la larghezza disponibile; in **Air Hockey**
@@ -127,6 +134,14 @@ Stato attuale (percentuale di livelli vinti dal profilo indicato):
 | Mattoni · bravo | 100% | 100% | 95% | 35% | 0% |
 | Air Hockey · medio | 68% | 18% | 3% | 0% | 0% |
 | Air Hockey · bravo | 98% | 85% | 25% | 0% | 0% |
+| Talpe · medio | 100% | 78% | 48% | 10% | 0% |
+| Talpe · bravo | 100% | 80% | 33% | 13% | 0% |
+
+**Forza 4** non compare qui: è a turni, quindi i profili basati su riflessi non
+dicono niente. La sua difficoltà è misurata in `test/regole.js` facendo giocare
+la CPU contro un avversario che guarda una mossa sola. Contro un giocatore
+«ragionevole» (chiude se può, para se deve, altrimenti sta al centro) la CPU
+perde il 63% delle mani al livello 1, ne vince il 77% al 5° e il 90% al 9°.
 
 Il bot simulato insegue la palla senza anticiparla e, nell'hockey, difende la
 porta molto peggio di una persona: i numeri servono a confrontare i livelli fra

@@ -218,5 +218,114 @@ console.log('\n[hockey: il disco non esce dal tavolo]');
     !escaped, escaped ? JSON.stringify(escaped) : '');
 }
 
+/* ---------- Forza 4: regole della griglia e forza della CPU ---------- */
+
+console.log('\n[forza 4: regole]');
+{
+  const def = defs.forza4;
+
+  /* Gioca una colonna toccandola come farebbe una persona, poi lascia scorrere
+     il tempo necessario alla caduta del gettone. */
+  function tocca(g, colonna) {
+    const s = g.game.state();
+    g.input.tap(s.colonne[colonna].x, s.colonne[colonna].y);
+    runUntil(g.game, () => {
+      const st = g.game.state();
+      return st.fase !== 'gioco' || (!st.vincente && st.turno !== s.turno) || g.events.outcome;
+    }, 3);
+  }
+
+  const menu = makeGame(def, util, 1);
+  check('la partita si apre con la scelta della modalità', menu.game.state().fase === 'menu');
+  const vociMenu = menu.game.state().menu.map((m) => m.modo).join(',');
+  check('le due modalità sono offerte', vociMenu === 'cpu,duo', vociMenu);
+
+  // due giocatori: mosse alternate sullo stesso dispositivo
+  const duo = makeGame(def, util, 1);
+  const m = duo.game.state().menu[1];
+  duo.input.tap(m.x, m.y);
+  runUntil(duo.game, () => duo.game.state().modo === 'duo', 1);
+  check('la modalità in due si attiva', duo.game.state().modo === 'duo');
+
+  const primo = duo.game.state().turno;
+  tocca(duo, 6);
+  check('dopo la mossa tocca all\'altro giocatore', duo.game.state().turno !== primo,
+    primo + ' -> ' + duo.game.state().turno);
+
+  // quattro in fila in orizzontale: rosso sulle colonne 0-3, giallo sopra
+  const win = makeGame(def, util, 1);
+  const m2 = win.game.state().menu[1];
+  win.input.tap(m2.x, m2.y);
+  runUntil(win.game, () => win.game.state().modo === 'duo', 1);
+  [0, 0, 1, 1, 2, 2, 3].forEach((c) => { if (!win.events.outcome) tocca(win, c); });
+  runUntil(win.game, () => !!win.events.outcome, 4);
+  check('quattro in fila orizzontale chiude la mano', win.events.outcome === 'win',
+    String(win.events.outcome));
+
+  // colonna piena: la mossa viene rifiutata e il turno non cambia
+  const full = makeGame(def, util, 1);
+  const m3 = full.game.state().menu[1];
+  full.input.tap(m3.x, m3.y);
+  runUntil(full.game, () => full.game.state().modo === 'duo', 1);
+  for (let i = 0; i < 6 && !full.events.outcome; i++) tocca(full, 0);
+  const altezza = full.game.state().board[0].filter((v) => v !== 0).length;
+  const turnoPrima = full.game.state().turno;
+  full.input.tap(full.game.state().colonne[0].x, full.game.state().colonne[0].y);
+  runUntil(full.game, () => false, 0.5);
+  const dopo = full.game.state();
+  check('la colonna piena non accetta altri gettoni',
+    altezza === 6 && dopo.board[0].filter((v) => v !== 0).length === 6 && dopo.turno === turnoPrima,
+    'altezza ' + altezza);
+
+  /* La CPU dei livelli alti deve battere quasi sempre chi guarda una mossa
+     sola: è la definizione operativa di "profondità che cresce". */
+  function sceltaSuperficiale(board) {
+    const COLS = 7, ROWS = 6;
+    const rigaLibera = (b, c) => { for (let r = 0; r < ROWS; r++) if (b[c][r] === 0) return r; return -1; };
+    const fa4 = (b, c, r, col) => {
+      const dirs = [[1, 0], [0, 1], [1, 1], [1, -1]];
+      for (const [dx, dy] of dirs) {
+        let n = 1;
+        for (const s2 of [1, -1]) {
+          for (let k = 1; k < 4; k++) {
+            const x = c + dx * k * s2, y = r + dy * k * s2;
+            if (x < 0 || x >= COLS || y < 0 || y >= ROWS || b[x][y] !== col) break;
+            n++;
+          }
+        }
+        if (n >= 4) return true;
+      }
+      return false;
+    };
+    const libere = [];
+    for (let c = 0; c < COLS; c++) if (board[c][ROWS - 1] === 0) libere.push(c);
+    for (const c of libere) { const r = rigaLibera(board, c); board[c][r] = 1; const w = fa4(board, c, r, 1); board[c][r] = 0; if (w) return c; }
+    for (const c of libere) { const r = rigaLibera(board, c); board[c][r] = 2; const w = fa4(board, c, r, 2); board[c][r] = 0; if (w) return c; }
+    libere.sort((x, y) => Math.abs(3 - x) - Math.abs(3 - y));
+    // un po' di varietà: due avversari deterministici rigiocherebbero
+    // dodici volte la stessa identica partita
+    return libere[Math.random() < 0.7 ? 0 : Math.floor(Math.random() * libere.length)];
+  }
+
+  let vinteCpu = 0, partite = 12;
+  for (let n = 0; n < partite; n++) {
+    const g = makeGame(def, util, 9);
+    const mm = g.game.state().menu[0];
+    g.input.tap(mm.x, mm.y);
+    runUntil(g.game, () => {
+      const st = g.game.state();
+      if (g.events.outcome) return true;
+      if (st.fase === 'gioco' && st.turno === 1 && st.modo === 'cpu' && !st.vincente) {
+        const c = sceltaSuperficiale(st.board);
+        if (c !== undefined) g.input.tap(st.colonne[c].x, st.colonne[c].y);
+      }
+      return false;
+    }, 200);
+    if (g.events.outcome === 'lose') vinteCpu++;
+  }
+  check('al livello 9 la CPU batte quasi sempre chi guarda una mossa sola',
+    vinteCpu >= partite * 0.7, vinteCpu + ' vittorie su ' + partite);
+}
+
 console.log(failures === 0 ? '\nTUTTO OK' : '\n' + failures + ' CONTROLLI FALLITI');
 process.exit(failures === 0 ? 0 : 1);

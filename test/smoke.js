@@ -31,7 +31,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   console.log('\n[home]');
   const cards = await page.$$('.card');
-  check('5 giochi in elenco', cards.length === 5, cards.length + ' trovati');
+  check('7 giochi in elenco', cards.length === 7, cards.length + ' trovati');
   check('titoli presenti', (await page.textContent('#game-grid')).includes('Serpente'));
 
   const canvasHash = () => page.evaluate(() => {
@@ -133,12 +133,18 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   check('niente pulsante LANCIA', (await page.$$('#touch-controls .action-btn')).length === 0);
   await sleep(2000);
   check('la pallina parte da sola', await page.evaluate(() => TG.engine.inspect().game.launched));
-  let scoreGrew = false;
+  /* Si contano i mattoni rimasti, non i punti: con il malus dei tocchi di
+     racchetta il punteggio può anche scendere mentre il muro si sfalda. */
+  const mattoniIniziali = await page.evaluate(() => TG.engine.inspect().game.bricks);
+  let rotti = 0;
   for (let i = 0; i < 25; i++) {
     await sleep(600);
-    if ((await page.evaluate(() => TG.engine.getScore())) >= 30) { scoreGrew = true; break; }
+    const s = await page.evaluate(() => TG.engine.getState() === 'running' ? TG.engine.inspect().game : null);
+    if (!s) break;
+    rotti = mattoniIniziali - s.bricks;
+    if (rotti >= 3) break;
   }
-  check('i mattoni si rompono', scoreGrew, 'punti ' + await page.evaluate(() => TG.engine.getScore()));
+  check('i mattoni si rompono', rotti >= 3, rotti + ' su ' + mattoniIniziali);
   await page.click('#btn-back');
 
   // ---- motore: avanzamento di livello e chiusura partita, con un gioco finto ----
@@ -264,6 +270,57 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   }
   check('la combo cresce rompendo i mattoni', peak >= 1, 'massimo ' + peak);
   check('il tocco di racchetta toglie punti', malus > 0, malus + ' punti tolti');
+
+  // ---- Talpe: le talpe escono e si colpiscono col tocco ----
+  console.log('\n[talpe]');
+  await page.goto(URL + '#/g/talpe');
+  await sleep(400);
+  await page.click('.btn:has-text("Gioca")');
+  const tbox = await page.$eval('#canvas', el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+  let colpita = false, vista = false;
+  for (let i = 0; i < 40; i++) {
+    const s = await page.evaluate(() => TG.engine.inspect());
+    if (s.state !== 'running') break;
+    const t = s.game.buche.find(b => b.tipo === 'talpa');
+    if (t) {
+      vista = true;
+      await page.mouse.click(tbox.x + t.x / 360 * tbox.w, tbox.y + t.y / 420 * tbox.h);
+      await sleep(150);
+      if ((await page.evaluate(() => TG.engine.inspect().game.presi)) > 0) { colpita = true; break; }
+    }
+    await sleep(200);
+  }
+  check('le talpe escono dalle buche', vista);
+  check('il tocco sulla talpa la prende', colpita);
+  check('il tempo del livello scorre',
+    (await page.evaluate(() => TG.engine.inspect().game.timeLeft)) < 42);
+
+  // ---- Forza 4: scelta modalità, mossa e risposta della CPU ----
+  console.log('\n[forza 4]');
+  await page.goto(URL + '#/g/forza4');
+  await sleep(400);
+  await page.click('.btn:has-text("Gioca")');
+  await sleep(300);
+  check('si apre la scelta della modalità',
+    (await page.evaluate(() => TG.engine.inspect().game.fase)) === 'menu');
+  const fbox = await page.$eval('#canvas', el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+  const toScreen = (x, y) => ({ x: fbox.x + x / 360 * fbox.w, y: fbox.y + y / 380 * fbox.h });
+  const voceCpu = (await page.evaluate(() => TG.engine.inspect().game.menu))[0];
+  const pc = toScreen(voceCpu.x, voceCpu.y);
+  await page.mouse.click(pc.x, pc.y);
+  await sleep(300);
+  check('si sceglie la sfida contro la CPU',
+    (await page.evaluate(() => TG.engine.inspect().game.modo)) === 'cpu');
+
+  const col = (await page.evaluate(() => TG.engine.inspect().game.colonne))[3];
+  const pcol = toScreen(col.x, col.y);
+  await page.mouse.click(pcol.x, pcol.y);
+  await sleep(2000);
+  const dopoMossa = await page.evaluate(() => TG.engine.inspect().game);
+  const gettoni = dopoMossa.board.flat().filter(v => v !== 0).length;
+  check('il gettone scende e la CPU risponde', gettoni >= 2, gettoni + ' gettoni sulla griglia');
+  check('la CPU gioca con il giallo',
+    dopoMossa.board.flat().filter(v => v === 2).length >= 1);
 
   // ---- persistenza + deep link ----
   console.log('\n[persistenza]');

@@ -41,10 +41,12 @@ function makeInput() {
     pointer: { x: 0, y: 0, down: false, inside: true, moved: true },
     held: {},
     queue: [],
+    taps: [],
     press(a) { this.queue.push(a); },
+    tap(x, y) { this.taps.push({ x: x, y: y }); },
     isDown(a) { return !!this.held[a]; },
     take() { return this.queue.length ? this.queue.shift() : null; },
-    takeTap() { return null; },
+    takeTap() { return this.taps.length ? this.taps.shift() : null; },
     takeDigit() { return null; },
     reset() {}
   };

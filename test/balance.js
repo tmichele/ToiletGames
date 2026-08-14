@@ -120,6 +120,32 @@ const BOTS = {
     };
   },
 
+  /* Le talpe si giocano a tocchi: il bot ne dà uno ogni tanto (la sua "mano"),
+     vede solo le talpe fuori da abbastanza tempo (la sua reazione) e ogni tanto
+     sbaglia buca o prende una bomba (il suo errore). */
+  talpe: (profile) => (api, game) => {
+    const tapEvery = 0.55 - profile.speed / 1600;
+    const sbaglia = profile.error / 200;
+    let attesa = 0;
+    return function (s, dt) {
+      attesa -= dt;
+      if (attesa > 0) return;
+      const viste = s.buche.filter((b) => b.tipo && b.eta >= profile.reaction);
+      if (!viste.length) return;
+      const talpe = viste.filter((b) => b.tipo === 'talpa');
+      let scelta;
+      if (Math.random() < sbaglia) {
+        scelta = viste[Math.floor(Math.random() * viste.length)];   // anche una bomba
+      } else if (talpe.length) {
+        scelta = talpe[0];
+      } else {
+        return;                                                    // solo bombe: si aspetta
+      }
+      api.input.tap(scelta.x, scelta.y);
+      attesa = tapEvery;
+    };
+  },
+
   /* Il bot dell'hockey ragiona come la CPU: si mette dietro al disco e poi ci
      passa attraverso verso la porta avversaria; altrimenti torna a coprire. */
   hockey: (profile) => (api, game) => {

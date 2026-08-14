@@ -161,6 +161,14 @@ Una colonna che crolla da 100% a 0% fra due livelli è uno scalino, non una
 progressione. E le partite marcate «infinite» sono stalli: vanno corretti nel
 gioco, non tollerati nel test.
 
+Se il gioco è **a turni** (come Forza 4), questi profili non servono: misurano
+riflessi, non strategia. Meglio un controllo in `test/regole.js` che faccia
+giocare l'avversario contro un giocatore-modello scritto apposta.
+
+Se il gioco nasconde informazione al giocatore (per esempio la pallina
+invisibile dei mattoni fantasma), il bot deve subirla anche lui: legge lo stato,
+quindi vedrebbe tutto e la meccanica non comparirebbe nei numeri.
+
 Attenzione a un errore facile: se l'avversario simulato ri-sorteggia il proprio
 errore di mira a ogni frame, la media annulla l'errore e l'avversario diventa
 infallibile. L'errore va sorteggiato una volta per scambio e tenuto.
