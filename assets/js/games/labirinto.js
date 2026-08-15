@@ -62,7 +62,9 @@ TG.registry.register({
     'conosce i corridoi, gli <b>alberi</b> che si vedono oltre i muri (stanno ' +
     'fermi: sono il tuo nord) e il <b>numero di zona</b> dipinto sulle pareti: il ' +
     'labirinto è diviso in nove settori, da 1 in alto a sinistra a 9 in basso a ' +
-    'destra. L\'uscita è la porta verde.',
+    'destra. <b>L\'arrivo</b> è segnato da una colonna di luce verde che si vede ' +
+    'oltre i muri da tutto il labirinto: sotto c\'è la statua di pietra del ' +
+    'bestione rosa addormentato, e toccarla chiude il livello.',
 
   levelInfo: function (level) {
     var c = config(level);
@@ -79,6 +81,7 @@ TG.registry.register({
 
     var cfg, mappa, giocatore, uscita, alberi, timeLeft, finito, visitate, semi;
     var ricordo;      // per cella: 1 appena vista, 0 dimenticata
+    var profondita;   // distanza del muro per ogni striscia: nasconde la statua
 
     /* ---------- generazione ---------- */
 
@@ -242,7 +245,7 @@ TG.registry.register({
         api.sfx.levelUp();
         api.levelComplete({
           bonus: 120 * cfg.level + Math.round(timeLeft) * 3,
-          message: 'Uscita trovata con ' + timeLeft.toFixed(0) + 's di anticipo.'
+          message: 'Arrivato alla statua con ' + timeLeft.toFixed(0) + 's di anticipo.'
         });
       }
     }
@@ -381,6 +384,33 @@ TG.registry.register({
       });
     }
 
+    /* Colonna di luce piantata sull'uscita: è alta più dei muri, quindi si vede
+       da qualunque punto del labirinto e dice dove andare. La bussola dà la
+       direzione in linea d'aria, questa dà il punto. */
+    function drawFaro(ctx) {
+      var orizzonte = TOP + VH / 2;
+      var cosA = Math.cos(giocatore.ang), sinA = Math.sin(giocatore.ang);
+      var piano = (W / 2) / Math.tan(FOV / 2);
+
+      var dx = (uscita.x + 0.5) - giocatore.x, dy = (uscita.y + 0.5) - giocatore.y;
+      var z = dx * cosA + dy * sinA;
+      if (z <= 0.4) return;
+      var lat = -dx * sinA + dy * cosA;
+      var sx = W / 2 + (lat / z) * piano;
+      if (sx < -60 || sx > W + 60) return;
+
+      var altezza = (3.2 / z) * piano;             // il faro sale ben oltre i muri
+      var baseY = orizzonte + (OCCHIO / z) * piano;
+      var largh = Math.max(3, (0.22 / z) * piano);
+
+      var g = ctx.createLinearGradient(0, baseY - altezza, 0, baseY);
+      g.addColorStop(0, 'rgba(74,222,128,0)');
+      g.addColorStop(0.35, 'rgba(74,222,128,0.5)');
+      g.addColorStop(1, 'rgba(74,222,128,0.85)');
+      ctx.fillStyle = g;
+      ctx.fillRect(sx - largh / 2, baseY - altezza, largh, altezza);
+    }
+
     /* Raycasting: per ogni striscia verticale si cerca il primo muro colpito
        (DDA) e se ne disegna la fetta, con il dettaglio che ne fa un posto
        riconoscibile invece di una parete qualunque. */
@@ -392,6 +422,7 @@ TG.registry.register({
          specchiata e illeggibile, perché la parete la si vede da un lato o
          dall'altro). */
       var facce = {};
+      profondita = [];
       var cosA = Math.cos(giocatore.ang), sinA = Math.sin(giocatore.ang);
       var piano = (W / 2) / Math.tan(FOV / 2);
 
@@ -420,6 +451,7 @@ TG.registry.register({
 
         var dist = lato === 0 ? (sideX - deltaX) : (sideY - deltaY);
         if (dist < 0.02) dist = 0.02;
+        profondita[Math.floor(x / STRISCIA)] = dist;
 
         var h = (ALTEZZA_MURO / dist) * piano;
         var y0 = orizzonte - (ALTEZZA_MURO - OCCHIO) / dist * piano;
@@ -458,11 +490,6 @@ TG.registry.register({
           ctx.fillRect(x, y0, STRISCIA + 1, h);
         }
 
-        // la porta di uscita si riconosce da lontano
-        if (mapX === uscita.x && mapY === uscita.y) {
-          ctx.fillStyle = ombreggia({ r: 74, g: 222, b: 128 }, dist);
-          ctx.fillRect(x, y0 + h * 0.15, STRISCIA + 1, h * 0.7);
-        }
       }
 
       disegnaNumeriZona(ctx, facce);
@@ -553,6 +580,119 @@ TG.registry.register({
         ox, oy + MAPPA_PX + 12);
     }
 
+    /* La statua che segna l'arrivo: un bestione rosa di pietra, seduto e mezzo
+       addormentato, su un piedistallo. Sta dentro al labirinto, quindi va
+       coperta dai muri che le stanno davanti: si ritagliano le strisce dove il
+       muro è più vicino della statua, usando le distanze raccolte dal
+       raycasting. */
+    function drawStatua(ctx) {
+      var orizzonte = TOP + VH / 2;
+      var cosA = Math.cos(giocatore.ang), sinA = Math.sin(giocatore.ang);
+      var piano = (W / 2) / Math.tan(FOV / 2);
+
+      var dx = (uscita.x + 0.5) - giocatore.x, dy = (uscita.y + 0.5) - giocatore.y;
+      var z = dx * cosA + dy * sinA;
+      if (z <= 0.25) return;
+      var lat = -dx * sinA + dy * cosA;
+      var sx = W / 2 + (lat / z) * piano;
+
+      var alt = (0.44 / z) * piano;          // la statua è alta ~0.44 unità
+      var largh = alt * 1.05;
+      if (largh < 4) return;
+      var baseY = orizzonte + (OCCHIO / z) * piano;
+      if (sx + largh < 0 || sx - largh > W) return;
+
+      // ritaglio: solo le strisce in cui nessun muro copre la statua
+      var strisce = [];
+      var da = Math.floor((sx - largh) / STRISCIA);
+      var a = Math.ceil((sx + largh) / STRISCIA);
+      for (var i = da; i <= a; i++) {
+        var d = profondita[i];
+        if (d === undefined || d > z) strisce.push(i);
+      }
+      if (!strisce.length) return;
+
+      ctx.save();
+      ctx.beginPath();
+      strisce.forEach(function (i) {
+        ctx.rect(i * STRISCIA, TOP, STRISCIA + 1, VH);
+      });
+      ctx.clip();
+
+      var buio = api.util.clamp(1 - z / (cfg.nebbia * 1.4), 0.3, 1);
+      var pietra = function (c) {
+        return 'rgb(' + Math.round(c[0] * buio) + ',' + Math.round(c[1] * buio) + ',' +
+          Math.round(c[2] * buio) + ')';
+      };
+      var ROSA = [214, 152, 168], ROSA_SCURO = [176, 118, 136], CREMA = [232, 214, 200];
+
+      // piedistallo
+      ctx.fillStyle = pietra([120, 118, 122]);
+      api.util.roundRect(ctx, sx - largh * 0.42, baseY - alt * 0.2, largh * 0.84, alt * 0.2, alt * 0.03);
+      ctx.fill();
+      ctx.fillStyle = pietra([98, 96, 102]);
+      ctx.fillRect(sx - largh * 0.46, baseY - alt * 0.05, largh * 0.92, alt * 0.05);
+
+      // corpo tozzo, seduto
+      ctx.fillStyle = pietra(ROSA);
+      ctx.beginPath();
+      ctx.ellipse(sx, baseY - alt * 0.42, largh * 0.3, alt * 0.24, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // coda che si arriccia dietro
+      ctx.strokeStyle = pietra(ROSA_SCURO);
+      ctx.lineWidth = Math.max(1, alt * 0.06);
+      ctx.beginPath();
+      ctx.moveTo(sx + largh * 0.24, baseY - alt * 0.4);
+      ctx.quadraticCurveTo(sx + largh * 0.52, baseY - alt * 0.5, sx + largh * 0.42, baseY - alt * 0.72);
+      ctx.stroke();
+
+      // testa grossa con il muso lungo
+      ctx.fillStyle = pietra(ROSA);
+      ctx.beginPath();
+      ctx.ellipse(sx - largh * 0.05, baseY - alt * 0.72, largh * 0.26, alt * 0.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(sx - largh * 0.3, baseY - alt * 0.68, largh * 0.16, alt * 0.11, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // orecchie
+      ctx.fillStyle = pietra(ROSA_SCURO);
+      ctx.beginPath();
+      ctx.moveTo(sx + largh * 0.02, baseY - alt * 0.88);
+      ctx.lineTo(sx + largh * 0.12, baseY - alt * 1.0);
+      ctx.lineTo(sx + largh * 0.16, baseY - alt * 0.84);
+      ctx.closePath();
+      ctx.fill();
+
+      // occhi socchiusi: è una statua, ma di uno che dorme in piedi
+      ctx.strokeStyle = pietra([70, 60, 66]);
+      ctx.lineWidth = Math.max(1, alt * 0.03);
+      ctx.beginPath();
+      ctx.moveTo(sx - largh * 0.16, baseY - alt * 0.76);
+      ctx.lineTo(sx - largh * 0.06, baseY - alt * 0.76);
+      ctx.moveTo(sx + largh * 0.04, baseY - alt * 0.76);
+      ctx.lineTo(sx + largh * 0.14, baseY - alt * 0.76);
+      ctx.stroke();
+
+      // zampe corte davanti
+      ctx.fillStyle = pietra(ROSA_SCURO);
+      ctx.beginPath();
+      ctx.ellipse(sx - largh * 0.18, baseY - alt * 0.22, largh * 0.09, alt * 0.06, 0, 0, Math.PI * 2);
+      ctx.ellipse(sx + largh * 0.1, baseY - alt * 0.22, largh * 0.09, alt * 0.06, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // targa sul piedistallo: qui si esce
+      if (alt > 60) {
+        ctx.fillStyle = pietra(CREMA);
+        ctx.font = 'bold ' + Math.round(alt * 0.09) + 'px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('USCITA', sx, baseY - alt * 0.07);
+      }
+
+      ctx.restore();
+    }
+
     function drawBussola(ctx) {
       ctx.fillStyle = '#0b1220';
       ctx.fillRect(0, 0, W, TOP);
@@ -612,7 +752,9 @@ TG.registry.register({
       // gli alberi stanno oltre i muri: si disegnano prima, così le pareti li
       // coprono in basso e restano visibili solo le chiome, come deve essere
       drawAlberi(ctx);
+      drawFaro(ctx);
       drawMuri(ctx);
+      drawStatua(ctx);
       drawMappa(ctx);
       drawBussola(ctx);
     }

@@ -25,7 +25,9 @@ col tempo**, finché quello che hai visto troppo fa non lo ricordi più. Gli alt
 riferimenti sono il **numero di zona** dipinto sulle pareti (il labirinto è
 diviso in nove settori, ognuno con la sua tinta), la bussola che indica dove sta
 l'uscita ma non come arrivarci, e gli alberi che spuntano oltre i muri, fermi e
-diversi uno dall'altro per tinta e sagoma. La scena è disegnata in raycasting
+diversi uno dall'altro per tinta e sagoma. L'**arrivo** si vede da lontano: una
+colonna di luce verde che supera i muri, e sotto la statua di pietra di un
+bestione rosa addormentato — la si raggiunge per chiudere il livello. La scena è disegnata in raycasting
 sul canvas 2D, senza WebGL, a 60 fps.
 
 **Forza 4** è l'unico a due modalità: si sceglie a inizio partita fra sfida alla
