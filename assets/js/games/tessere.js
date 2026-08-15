@@ -3,7 +3,9 @@
    Campo quadrato, tessere numerate e una casella vuota: si fanno scorrere le
    tessere adiacenti al buco finché i numeri non tornano in ordine.
 
-   Difficoltà: griglia più grande, mescolamento più profondo e meno tempo.
+   Difficoltà: griglia più grande e mescolamento più profondo. Il tempo cresce
+   con il lato della griglia — un 4×4 non è un 3×3 un po' più lungo, è un altro
+   ordine di grandezza — e cala solo di poco salendo di livello.
 
    Il mescolamento si fa partendo dalla posizione risolta e tirando mosse legali
    a caso: così la configurazione è risolvibile per costruzione. Mescolare
@@ -13,13 +15,18 @@
 'use strict';
 
 function config(level) {
-  var n = level <= 2 ? 3 : (level <= 5 ? 4 : 5);
-  var mescola = Math.min(10 + level * 8, 140);
+  var n = level <= 2 ? 3 : (level <= 6 ? 4 : 5);
+  var mescola = Math.min(10 + level * 6, 120);
+  /* Il tempo dipende soprattutto dal lato della griglia: passare da 3×3 a 4×4
+     non raddoppia la fatica, la moltiplica. Una persona che ragiona muove circa
+     una tessera al secondo e ne usa molte più del minimo teorico, quindi le
+     basi qui sotto sono tarate su quel passo, non sulla soluzione ottima. */
+  var basePerLato = { 3: 60, 4: 115, 5: 175 }[n];
   return {
     level: level,
     n: n,
     mescola: mescola,
-    tempo: Math.max(30, 34 + mescola * 0.85 - level * 2),
+    tempo: Math.min(Math.max(50, basePerLato + mescola * 0.6 - level * 1.5), 210),
     puntiTessera: 10 * level
   };
 }
@@ -37,7 +44,9 @@ TG.registry.register({
     'arriva la tessera che entra nel buco. ' +
     'Le tessere già al loro posto diventano verdi. ' +
     'Il livello finisce quando i numeri sono in ordine con il buco in fondo a ' +
-    'destra: se scade il tempo prima, la partita è finita.',
+    'destra: se scade il tempo prima, la partita è finita. Il tempo concesso ' +
+    'tiene conto della griglia: un minuto scarso per il 3×3, due per il 4×4, ' +
+    'oltre tre per il 5×5.',
 
   levelInfo: function (level) {
     var c = config(level);
@@ -213,7 +222,13 @@ TG.registry.register({
       ctx.textAlign = 'left';
       ctx.fillStyle = 'rgba(230,237,243,0.8)';
       ctx.fillText('a posto ' + contaGiuste() + '/' + (cfg.n * cfg.n - 1), 12, 22);
+      // su livelli da minuti la sola barra non basta: serve il numero
+      ctx.textAlign = 'center';
+      ctx.fillStyle = frazione < 0.25 ? '#f87171' : 'rgba(230,237,243,0.8)';
+      var resti = Math.max(0, Math.ceil(timeLeft));
+      ctx.fillText(Math.floor(resti / 60) + ':' + ('0' + (resti % 60)).slice(-2), W / 2, 22);
       ctx.textAlign = 'right';
+      ctx.fillStyle = 'rgba(230,237,243,0.8)';
       ctx.fillText('mosse ' + mosse, W - 12, 22);
 
       // cornice

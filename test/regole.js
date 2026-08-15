@@ -480,6 +480,31 @@ console.log('\n[tessere: rompicapo scorrevole]');
   const finito = runUntil(gt.game, () => !!gt.events.outcome, 200);
   check('allo scadere del tempo la partita finisce', finito && gt.events.outcome === 'lose',
     String(gt.events.outcome));
+
+  /* Il tempo deve crescere con il lato della griglia: un 4×4 non è un 3×3 un
+     po' più lungo. Senza questo controllo un ritocco alla formula potrebbe
+     rendere di nuovo impossibili i livelli grandi senza che nessuno se ne
+     accorga finché non ci gioca. */
+  const tempi = [1, 4, 8].map((l) => {
+    const info = defs.tessere.levelInfo(l);
+    return {
+      lato: parseInt(info.match(/griglia (\d)/)[1], 10),
+      secondi: parseInt(info.match(/(\d+)s/)[1], 10)
+    };
+  });
+  check('il tempo cresce con la griglia',
+    tempi[0].lato === 3 && tempi[1].lato === 4 && tempi[2].lato === 5 &&
+    tempi[1].secondi > tempi[0].secondi * 1.5 && tempi[2].secondi > tempi[1].secondi * 1.3,
+    tempi.map((t) => t.lato + '×' + t.lato + ' ' + t.secondi + 's').join(', '));
+
+  /* E deve bastare a chi gioca bene: il risolutore muove una tessera ogni
+     mezzo secondo, che è già più lento di una persona concentrata. */
+  const gp = makeGame(def, util, 1);
+  const percorsoTempo = risolvi(gp.game.state().griglia, gp.game.state().n);
+  const sufficiente = percorsoTempo &&
+    percorsoTempo.length * 0.5 < gp.game.state().timeLeft;
+  check('il tempo basta a chi sa cosa fare', !!sufficiente,
+    percorsoTempo ? percorsoTempo.length + ' mosse minime in ' + gp.game.state().timeLeft + 's' : '');
 }
 
 /* ---------- Labirinto: percorribilità, muri, bussola, uscita ---------- */
