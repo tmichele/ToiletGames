@@ -598,5 +598,40 @@ console.log('\n[labirinto: mappa che si dimentica]');
     memorie.map((m) => m.split('memoria della mappa ')[1]).join(' / '));
 }
 
+/* ---------- checkpoint: partire da un livello alto ---------- */
+
+console.log('\n[checkpoint: partenza da livello alto]');
+{
+  /* Con i checkpoint una partita può cominciare direttamente dal livello 10:
+     start(level) non può più dare per scontato di essere passato dai livelli
+     precedenti. Qui si controlla che ogni gioco regga l'avvio a freddo. */
+  const problemi = [];
+  Object.keys(defs).forEach((id) => {
+    try {
+      const g = makeGame(defs[id], util, 10);
+      for (let i = 0; i < 180; i++) g.game.update(DT);   // tre secondi
+      const s = g.game.state ? g.game.state() : null;
+      if (s && s.lives != null && s.lives <= 0) problemi.push(id + ': parte senza vite');
+      if (s && s.timeLeft != null && s.timeLeft <= 0) problemi.push(id + ': parte senza tempo');
+    } catch (e) {
+      problemi.push(id + ': ' + e.message);
+    }
+  });
+  check('tutti i giochi partono anche direttamente dal livello 10',
+    problemi.length === 0, problemi.join(' | '));
+
+  // e dal livello 1 restano identici a prima
+  const daUno = [];
+  Object.keys(defs).forEach((id) => {
+    try {
+      const g = makeGame(defs[id], util, 1);
+      for (let i = 0; i < 60; i++) g.game.update(DT);
+    } catch (e) {
+      daUno.push(id + ': ' + e.message);
+    }
+  });
+  check('e naturalmente anche dal livello 1', daUno.length === 0, daUno.join(' | '));
+}
+
 console.log(failures === 0 ? '\nTUTTO OK' : '\n' + failures + ' CONTROLLI FALLITI');
 process.exit(failures === 0 ? 0 : 1);

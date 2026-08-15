@@ -116,11 +116,11 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     // accorciamento (ogni 9,5s al primo livello), altrimenti si misura nulla
     if (cur.cpuPts >= 3 && i >= 13) break;
   }
-  /* Soglia bassa apposta: la durata delle partite ha una coda lunga e chiedere
-     tre punti entro il minuto faceva fallire il controllo per pura varianza.
-     Che "fermo non vinca mai" resta misurato da balance.js su centinaia di mani. */
-  check('restare fermi fa perdere terreno', g.cpuPts >= 2 && g.cpuPts > g.myPts,
-    g.myPts + '-' + g.cpuPts);
+  /* Qui si verifica solo che la CPU giochi e segni: chiedere che sia in
+     vantaggio significherebbe scommettere su una singola partita, e il
+     giocatore fermo vince comunque il 3% delle volte al primo livello. Che
+     "fermo non vinca quasi mai" lo misura balance.js su centinaia di partite. */
+  check('la CPU segna mentre resti fermo', g.cpuPts >= 2, g.myPts + '-' + g.cpuPts);
   check('la racchetta della CPU si accorcia', minNpcW < w0.npc.w, w0.npc.w + ' -> ' + minNpcW);
   check('anche la tua si accorcia', minMyW < w0.player.w, w0.player.w + ' -> ' + minMyW);
   await page.click('#btn-back');
@@ -136,18 +136,29 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   check('niente pulsante LANCIA', (await page.$$('#touch-controls .action-btn')).length === 0);
   await sleep(2000);
   check('la pallina parte da sola', await page.evaluate(() => TG.engine.inspect().game.launched));
-  /* Si contano i mattoni rimasti, non i punti: con il malus dei tocchi di
-     racchetta il punteggio può anche scendere mentre il muro si sfalda. */
+  /* Il test gioca davvero: insegue la pallina con i tasti. Lasciando la
+     racchetta ferma il risultato dipendeva dalla fortuna, e infatti ogni tanto
+     la pallina non la toccava mai in venti secondi. */
   const mattoniIniziali = await page.evaluate(() => TG.engine.inspect().game.bricks);
-  let rotti = 0;
-  for (let i = 0; i < 25; i++) {
-    await sleep(600);
+  let rotti = 0, malus = 0, premuto = null;
+  for (let i = 0; i < 240; i++) {
     const s = await page.evaluate(() => TG.engine.getState() === 'running' ? TG.engine.inspect().game : null);
     if (!s) break;
-    rotti = mattoniIniziali - s.bricks;
-    if (rotti >= 3) break;
+    rotti = Math.max(rotti, mattoniIniziali - s.bricks);
+    malus = Math.max(malus, s.malus);
+    const dx = s.ball.x - s.paddle.x;
+    const vuole = dx < -6 ? 'ArrowLeft' : (dx > 6 ? 'ArrowRight' : null);
+    if (vuole !== premuto) {
+      if (premuto) await page.keyboard.up(premuto);
+      if (vuole) await page.keyboard.down(vuole);
+      premuto = vuole;
+    }
+    if (rotti >= 3 && malus > 0) break;
+    await sleep(80);
   }
+  if (premuto) await page.keyboard.up(premuto);
   check('i mattoni si rompono', rotti >= 3, rotti + ' su ' + mattoniIniziali);
+  check('il tocco di racchetta toglie punti', malus > 0, malus + ' punti tolti');
   await page.click('#btn-back');
 
   // ---- motore: avanzamento di livello e chiusura partita, con un gioco finto ----
@@ -263,16 +274,14 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   await page.keyboard.press('Space');
   /* Il punteggio può solo salire (mattoni) o scendere per il malus del tocco
      di racchetta: un calo fra due campioni è la prova che il malus si applica. */
-  let peak = 0, malus = 0;
+  let peak = 0;
   for (let i = 0; i < 80; i++) {
     await sleep(250);
     const s = await page.evaluate(() => TG.engine.inspect());
     peak = Math.max(peak, s.game.combo);
-    malus = Math.max(malus, s.game.malus);   // punti tolti dai tocchi di racchetta
     if (s.state !== 'running') break;
   }
   check('la combo cresce rompendo i mattoni', peak >= 1, 'massimo ' + peak);
-  check('il tocco di racchetta toglie punti', malus > 0, malus + ' punti tolti');
 
   // ---- Talpe: le talpe escono e si colpiscono col tocco ----
   console.log('\n[talpe]');
@@ -387,6 +396,73 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   await sleep(1000);
   check('riprendendo il tempo riparte',
     (await page.evaluate(() => TG.engine.inspect().game.timeLeft)) < inPausa);
+
+  // ---- checkpoint ogni 5 livelli, valido per tutti i giochi ----
+  console.log('\n[checkpoint]');
+  /* Le sezioni precedenti ricaricano la pagina, quindi il gioco finto va
+     registrato di nuovo: serve un gioco che salga di livello a comando. */
+  await page.goto(URL);
+  await sleep(300);
+  await page.evaluate(() => {
+    window.__cmd = null;
+    TG.scores.clear('zzztest');
+    TG.registry.register({
+      id: 'zzztest', title: 'Test', icon: '🧪', tagline: 'gioco di prova',
+      controls: 'none', viewport: { w: 200, h: 200 },
+      create: function (api) {
+        return {
+          start: function () {},
+          update: function () {
+            if (window.__cmd === 'win') { window.__cmd = null; api.addScore(50); api.levelComplete({ bonus: 10 }); }
+            if (window.__cmd === 'lose') { window.__cmd = null; api.gameOver({ message: 'fine prova' }); }
+          },
+          draw: function (ctx) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 200, 200); }
+        };
+      }
+    });
+    location.hash = '#/g/zzztest';
+  });
+  await sleep(300);
+  check('senza checkpoint si parte e basta',
+    (await page.$$('#overlay-actions .btn')).length === 1);
+  await page.click('.btn:has-text("Gioca")');
+  await sleep(200);
+
+  // sale fino al livello 5 vincendo quattro volte
+  for (let l = 1; l <= 4; l++) {
+    await page.evaluate(() => { window.__cmd = 'win'; });
+    await sleep(300);
+    await page.click(`.btn:has-text("Livello ${l + 1}")`);
+    await sleep(250);
+  }
+  check('arrivato al livello 5', (await page.evaluate(() => TG.engine.getLevel())) === 5);
+  check('il livello 5 è segnato come checkpoint',
+    (await page.textContent('#hud-level')).includes('🚩'), await page.textContent('#hud-level'));
+  check('il checkpoint è salvato', (await page.evaluate(() => TG.scores.checkpoint('zzztest'))) === 5);
+
+  // si perde e si riparte dal checkpoint
+  await page.evaluate(() => { window.__cmd = 'lose'; });
+  await sleep(300);
+  check('il game over propone la ripartenza dal checkpoint',
+    (await page.textContent('#overlay-actions')).includes('Dal livello 5'),
+    await page.textContent('#overlay-actions'));
+  await page.click('.btn:has-text("Dal livello 5")');
+  await sleep(300);
+  check('la nuova partita parte dal livello 5',
+    (await page.evaluate(() => TG.engine.getLevel())) === 5);
+  check('il punteggio riparte da zero', (await page.evaluate(() => TG.engine.getScore())) === 0);
+
+  // il checkpoint sopravvive al ricaricamento della pagina
+  await page.evaluate(() => { window.__cmd = 'lose'; });
+  await sleep(300);
+  const boardCp = await page.textContent('#board');
+  check('la classifica segnala la partenza dal checkpoint', boardCp.includes('da 5'),
+    boardCp.replace(/\s+/g, ' ').slice(0, 80));
+  // ricaricando davvero la pagina il checkpoint deve essere ancora lì
+  await page.goto(URL);
+  await sleep(300);
+  check('il checkpoint sopravvive al ricaricamento',
+    (await page.evaluate(() => TG.scores.checkpoint('zzztest'))) === 5);
 
   // ---- persistenza + deep link ----
   console.log('\n[persistenza]');

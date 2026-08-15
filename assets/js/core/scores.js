@@ -4,6 +4,7 @@ TG.scores = (function () {
   'use strict';
 
   var MAX_ENTRIES = 10;
+  var CHECKPOINT_OGNI = 5;   // ogni quanti livelli si sblocca una ripartenza
 
   function boardKey(gameId) { return 'board:' + gameId; }
   function statsKey(gameId) { return 'stats:' + gameId; }
@@ -17,7 +18,22 @@ TG.scores = (function () {
     var s = TG.storage.get(statsKey(gameId), null);
     return s && typeof s === 'object'
       ? s
-      : { plays: 0, bestScore: 0, bestLevel: 0, lastPlayed: 0 };
+      : { plays: 0, bestScore: 0, bestLevel: 0, lastPlayed: 0, checkpoint: 0 };
+  }
+
+  /* Checkpoint: l'ultimo livello multiplo di CHECKPOINT_OGNI raggiunto, da cui
+     si potrà ripartire nelle partite successive. Si registra appena ci si
+     arriva, non a fine partita: è una conquista, e resta anche se poi si perde
+     subito dopo. */
+  function checkpoint(gameId) { return stats(gameId).checkpoint || 0; }
+
+  function setCheckpoint(gameId, level) {
+    if (level % CHECKPOINT_OGNI !== 0) return false;
+    var s = stats(gameId);
+    if (level <= (s.checkpoint || 0)) return false;
+    s.checkpoint = level;
+    TG.storage.set(statsKey(gameId), s);
+    return true;
   }
 
   function best(gameId) { return stats(gameId).bestScore || 0; }
@@ -25,14 +41,16 @@ TG.scores = (function () {
 
   /* Registra la fine di una partita.
      Ritorna { rank, isRecord, entry } — rank è 1-based, 0 se fuori classifica. */
-  function submit(gameId, score, level) {
+  function submit(gameId, score, level, partenza) {
     score = Math.max(0, Math.round(score || 0));
     level = Math.max(1, Math.round(level || 1));
+    partenza = Math.max(1, Math.round(partenza || 1));
 
     var entry = {
       name: TG.profile.getName(),
       score: score,
       level: level,
+      from: partenza,          // da che livello era iniziata la partita
       date: Date.now(),
       id: 'e' + Date.now() + '-' + Math.floor(Math.random() * 1000)
     };
@@ -52,6 +70,7 @@ TG.scores = (function () {
     s.plays = (s.plays || 0) + 1;
     s.bestScore = Math.max(s.bestScore || 0, score);
     s.bestLevel = Math.max(s.bestLevel || 0, level);
+    s.checkpoint = Math.max(s.checkpoint || 0, level - (level % CHECKPOINT_OGNI));
     s.lastPlayed = entry.date;
     TG.storage.set(statsKey(gameId), s);
 
@@ -75,6 +94,9 @@ TG.scores = (function () {
 
   return {
     MAX_ENTRIES: MAX_ENTRIES,
+    CHECKPOINT_OGNI: CHECKPOINT_OGNI,
+    checkpoint: checkpoint,
+    setCheckpoint: setCheckpoint,
     top: top,
     stats: stats,
     best: best,

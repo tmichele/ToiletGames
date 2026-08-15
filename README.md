@@ -51,9 +51,17 @@ pareggiano, poi la superano fino al 135%. Quello che cambia negli altri livelli
 quanto in fretta rientrano — non solo quanto corrono.
 
 Ogni gioco ha la **sua classifica locale** (top 10, con livello raggiunto e
-nome del giocatore) e una progressione a livelli: si parte sempre dal livello 1
-e si sale finché non si perde. Il punteggio non si azzera fra i livelli, così la
+nome del giocatore) e una progressione a livelli: si parte dal livello 1 e si
+sale finché non si perde. Il punteggio non si azzera fra i livelli, così la
 classifica misura davvero quanto lontano sei arrivato.
+
+**Checkpoint ogni 5 livelli.** Arrivare al livello 5, 10, 15… mette un
+segnalibro 🚩 in quel gioco: dalla partita successiva puoi scegliere se
+ricominciare dal livello 1 o ripartire dall'ultimo checkpoint. È un modo per non
+rifare ogni volta i primi livelli, ma non è un pasto gratis — i punti dei livelli
+saltati non li prendi, e la classifica segna «da 5» accanto ai risultati partiti
+da un checkpoint, così i punteggi restano confrontabili. Il checkpoint si guadagna
+appena si mette piede nel livello, quindi resta anche se si perde subito dopo.
 
 ## Uso
 

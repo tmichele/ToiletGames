@@ -19,6 +19,7 @@ TG.ui = (function () {
       var statText = st.plays
         ? 'record ' + st.bestScore + ' · liv. ' + st.bestLevel
         : 'mai giocato';
+      if (st.checkpoint > 1) statText += ' · 🚩' + st.checkpoint;
       card.innerHTML =
         '<span class="card__icon" aria-hidden="true">' + TG.util.escapeHtml(game.icon) + '</span>' +
         '<span class="card__title">' + TG.util.escapeHtml(game.title) + '</span>' +
@@ -45,6 +46,13 @@ TG.ui = (function () {
       lines.push('<p class="stats-line">Miglior livello raggiunto: <b>' + bestLevel +
         '</b> a <b>' + TG.util.escapeHtml(bestGame.title) + '</b></p>');
     }
+    var conCheckpoint = games.filter(function (g) { return TG.scores.checkpoint(g.id) > 1; });
+    if (conCheckpoint.length) {
+      lines.push('<p class="stats-line">Checkpoint 🚩 sbloccati: <b>' +
+        conCheckpoint.map(function (g) {
+          return TG.util.escapeHtml(g.title) + ' liv. ' + TG.scores.checkpoint(g.id);
+        }).join('</b>, <b>') + '</b></p>');
+    }
     lines.push('<p class="stats-line">Giocatore: <b>' + TG.util.escapeHtml(TG.profile.getName()) + '</b>' +
       (TG.storage.isPersistent ? '' : ' · <i>classifiche non salvabili su questo browser</i>') + '</p>');
     el.homeStats.innerHTML = lines.join('');
@@ -65,7 +73,12 @@ TG.ui = (function () {
   }
 
   function setScore(v) { el.score.textContent = v; bump(el.score); }
-  function setLevel(v) { el.level.textContent = v; bump(el.level); }
+  /* Il livello multiplo di 5 è un checkpoint: si segna con la bandierina,
+     così mentre giochi sai di aver messo il segnalibro. */
+  function setLevel(v) {
+    el.level.textContent = v + (v % TG.scores.CHECKPOINT_OGNI === 0 ? ' 🚩' : '');
+    bump(el.level);
+  }
   function setBest(v) { el.best.textContent = v; }
 
   /* ---------- classifica ---------- */
@@ -84,9 +97,13 @@ TG.ui = (function () {
     list.forEach(function (e, i) {
       var li = document.createElement('li');
       if (highlightId && e.id === highlightId) li.className = 'is-new';
+      // se la partita era iniziata da un checkpoint lo si dice: i punti dei
+      // livelli saltati mancano, ed è giusto poterlo leggere in classifica
+      var partenza = (e.from && e.from > 1) ? '<span class="board__from">da ' + e.from + '</span>' : '';
       li.innerHTML =
         '<span class="board__rank">' + (i + 1) + '.</span>' +
         '<span class="board__name">' + TG.util.escapeHtml(e.name) + '</span>' +
+        partenza +
         '<span class="board__lvl">L' + e.level + '</span>' +
         '<span class="board__score">' + e.score + '</span>';
       ol.appendChild(li);

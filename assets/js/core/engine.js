@@ -9,7 +9,7 @@ TG.engine = (function () {
   var canvas = null, ctx = null, stage = null;
   var def = null, instance = null, api = null;
   var state = 'idle'; // idle | ready | running | paused | levelclear | over
-  var level = 1, score = 0;
+  var level = 1, score = 0, livelloIniziale = 1;
   var lastTime = 0, rafId = 0;
   var view = { w: 360, h: 480 };
   var listeners = {};
@@ -131,11 +131,14 @@ TG.engine = (function () {
     });
   }
 
-  function load(gameDef) {
+  /* startLevel permette di ripartire da un checkpoint sbloccato: il motore non
+     sa nulla di come sia stato guadagnato, gli basta il numero. */
+  function load(gameDef, startLevel) {
     destroy();
     def = gameDef;
     view = { w: def.viewport.w, h: def.viewport.h };
-    level = 1;
+    level = Math.max(1, Math.round(startLevel || 1));
+    livelloIniziale = level;
     score = 0;
     api = makeApi();
     api.width = view.w;
@@ -164,6 +167,7 @@ TG.engine = (function () {
     if (state !== 'levelclear') return;
     level += 1;
     emit('level', level);
+    emit('checkpoint', level);   // chi ascolta decide se è da salvare
     TG.input.reset();
     TG.input.setEnabled(true);
     if (instance.start) instance.start(level);
@@ -172,10 +176,12 @@ TG.engine = (function () {
     emit('state', state);
   }
 
-  function restart() {
+  /* Rigiocare riparte dallo stesso livello di questa partita: se sei entrato
+     da un checkpoint, non ti rispedisce al livello 1 senza dirtelo. */
+  function restart(startLevel) {
     if (!def) return;
     var d = def;
-    load(d);
+    load(d, startLevel == null ? livelloIniziale : startLevel);
     begin();
   }
 
@@ -227,6 +233,7 @@ TG.engine = (function () {
     },
     getState: function () { return state; },
     getLevel: function () { return level; },
+    getStartLevel: function () { return livelloIniziale; },
     getScore: function () { return score; },
     getGame: function () { return def; }
   };

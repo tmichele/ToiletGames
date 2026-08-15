@@ -29,7 +29,8 @@
     howto: document.getElementById('game-howto')
   };
 
-  var current = null; // gioco aperto
+  var current = null;        // gioco aperto
+  var appenaSbloccato = 0;   // checkpoint conquistato in questa partita, da annunciare
 
   TG.ui.init(el);
   TG.input.init({ stage: el.stage, canvas: el.canvas, controls: el.touchControls });
@@ -53,11 +54,12 @@
     // successivo hashchange ricaricherebbe la partita appena avviata
     if (current && current.id === id && TG.engine.getState() !== 'idle') return;
     current = game;
+    appenaSbloccato = 0;
     TG.ui.showView('game');
     TG.ui.setHudLabels(game);
     TG.ui.setBest(TG.scores.best(game.id));
     TG.ui.renderBoard(game.id);
-    TG.engine.load(game);
+    TG.engine.load(game, 1);
     if (location.hash !== '#/g/' + id) location.hash = '#/g/' + id;
     showReadyOverlay();
   }
@@ -68,18 +70,35 @@
     return info ? '\n' + info : '';
   }
 
+  /* Avvia la partita dal livello indicato: 1, oppure il checkpoint sbloccato. */
+  function avvia(livello) {
+    TG.sfx.unlock();
+    TG.ui.hideOverlay();
+    if (TG.engine.getStartLevel() !== livello || TG.engine.getState() !== 'ready') {
+      TG.engine.load(current, livello);
+    }
+    TG.engine.begin();
+  }
+
   function showReadyOverlay() {
+    var cp = TG.scores.checkpoint(current.id);
+    var azioni = [{ label: 'Gioca', onClick: function () { avvia(1); } }];
+    var corpo = current.tagline + levelLine(1);
+
+    if (cp > 1) {
+      azioni.push({
+        label: 'Dal livello ' + cp,
+        ghost: true,
+        onClick: function () { avvia(cp); }
+      });
+      corpo += '\n🚩 Checkpoint sbloccato: puoi ripartire dal livello ' + cp +
+        ' (i punti dei livelli saltati però non li prendi).';
+    }
+
     TG.ui.showOverlay({
       title: current.icon + ' ' + current.title,
-      body: current.tagline + levelLine(1),
-      actions: [{
-        label: 'Gioca',
-        onClick: function () {
-          TG.sfx.unlock();
-          TG.ui.hideOverlay();
-          TG.engine.begin();
-        }
-      }]
+      body: corpo,
+      actions: azioni
     });
   }
 
@@ -94,8 +113,19 @@
   TG.engine.on('score', function (v) { TG.ui.setScore(v); });
   TG.engine.on('level', function (v) { TG.ui.setLevel(v); });
 
+  /* Arrivare a un livello multiplo di 5 sblocca la ripartenza da lì: si salva
+     subito, così resta anche se la partita finisce male un attimo dopo. */
+  TG.engine.on('checkpoint', function (livello) {
+    if (current && TG.scores.setCheckpoint(current.id, livello)) {
+      appenaSbloccato = livello;
+      TG.sfx.tone(660, 0.12, 'square', 0.08, 990);
+    }
+  });
+
   TG.engine.on('levelclear', function (d) {
-    var body = (d.message ? d.message + '\n' : '') +
+    var body = (appenaSbloccato ? '🚩 Checkpoint: da ora puoi ripartire dal livello ' +
+        appenaSbloccato + '.\n' : '') +
+      (d.message ? d.message + '\n' : '') +
       (d.bonus ? 'Bonus livello: <b>+' + d.bonus + '</b>\n' : '') +
       'Punteggio: <b>' + d.score + '</b>' +
       levelLine(d.level + 1);
@@ -127,21 +157,42 @@
 
   /* Fine partita: registra il risultato e mostra il verdetto. */
   function finish(score, level, message) {
-    var res = TG.scores.submit(current.id, score, level);
+    var partenza = TG.engine.getStartLevel();
+    var res = TG.scores.submit(current.id, score, level, partenza);
+    var cp = TG.scores.checkpoint(current.id);
     TG.ui.setBest(TG.scores.best(current.id));
     TG.ui.renderBoard(current.id, res.entry.id);
-    var body = (message ? message + '\n' : '') +
-      'Punteggio: <b>' + score + '</b> · livello <b>' + level + '</b>\n' +
+
+    var body = (appenaSbloccato ? '🚩 Checkpoint sbloccato al livello ' + appenaSbloccato + '.\n' : '') +
+      (message ? message + '\n' : '') +
+      'Punteggio: <b>' + score + '</b> · livello <b>' + level + '</b>' +
+      (partenza > 1 ? ' (partito dal ' + partenza + ')' : '') + '\n' +
       (res.isRecord ? '🏆 Nuovo record personale!' :
         (res.rank ? 'Sei ' + res.rank + '° in classifica.' : 'Niente classifica stavolta.'));
-    TG.ui.showOverlay({
-      title: 'Partita finita',
-      body: body,
-      actions: [
-        { label: 'Rigioca', onClick: function () { TG.ui.hideOverlay(); TG.engine.restart(); } },
-        { label: 'Altri giochi', ghost: true, onClick: goHome }
-      ]
-    });
+
+    var azioni = [
+      {
+        label: partenza > 1 ? 'Rigioca dal ' + partenza : 'Rigioca',
+        onClick: function () { TG.ui.hideOverlay(); TG.engine.restart(); }
+      }
+    ];
+    if (cp > 1 && cp !== partenza) {
+      azioni.push({
+        label: 'Dal livello ' + cp,
+        ghost: true,
+        onClick: function () { TG.ui.hideOverlay(); TG.engine.restart(cp); }
+      });
+    }
+    if (partenza > 1) {
+      azioni.push({
+        label: 'Dal livello 1',
+        ghost: true,
+        onClick: function () { TG.ui.hideOverlay(); TG.engine.restart(1); }
+      });
+    }
+    azioni.push({ label: 'Altri giochi', ghost: true, onClick: goHome });
+
+    TG.ui.showOverlay({ title: 'Partita finita', body: body, actions: azioni });
   }
 
   /* ---------- comandi dell'interfaccia ---------- */

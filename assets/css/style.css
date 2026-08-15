@@ -178,6 +178,7 @@ button { font-family: inherit; color: inherit; }
 .board__rank { width: 1.6em; color: var(--fg-dim); }
 .board__name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board__lvl { color: var(--fg-dim); }
+.board__from { color: var(--warn); font-size: 0.72rem; }
 .board__score { font-weight: 700; }
 .board__empty { color: var(--fg-dim); font-style: italic; font-family: var(--font); }
 
