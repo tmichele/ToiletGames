@@ -21,12 +21,12 @@ function config(level) {
      non raddoppia la fatica, la moltiplica. Una persona che ragiona muove circa
      una tessera al secondo e ne usa molte più del minimo teorico, quindi le
      basi qui sotto sono tarate su quel passo, non sulla soluzione ottima. */
-  var basePerLato = { 3: 60, 4: 115, 5: 175 }[n];
+  var basePerLato = { 3: 120, 4: 230, 5: 350 }[n];
   return {
     level: level,
     n: n,
     mescola: mescola,
-    tempo: Math.min(Math.max(50, basePerLato + mescola * 0.6 - level * 1.5), 210),
+    tempo: Math.min(Math.max(100, basePerLato + mescola * 1.2 - level * 3), 420),
     puntiTessera: 10 * level
   };
 }
@@ -45,8 +45,8 @@ TG.registry.register({
     'Le tessere già al loro posto diventano verdi. ' +
     'Il livello finisce quando i numeri sono in ordine con il buco in fondo a ' +
     'destra: se scade il tempo prima, la partita è finita. Il tempo concesso ' +
-    'tiene conto della griglia: un minuto scarso per il 3×3, due per il 4×4, ' +
-    'oltre tre per il 5×5.',
+    'tiene conto della griglia: un paio di minuti per il 3×3, quattro per il ' +
+    '4×4, oltre sei per il 5×5.',
 
   levelInfo: function (level) {
     var c = config(level);
@@ -161,7 +161,10 @@ TG.registry.register({
       if (inOrdine()) {
         risolto = true;
         api.levelComplete({
-          bonus: 100 * cfg.level + Math.round(timeLeft) * 4,
+          /* Il bonus vale due punti al secondo avanzato: con i tempi lunghi di
+             questo gioco, quattro gonfiavano il punteggio rispetto agli altri
+             titoli e ai risultati già in classifica. */
+          bonus: 100 * cfg.level + Math.round(timeLeft) * 2,
           message: 'Risolto in ' + mosse + ' mosse, con ' + timeLeft.toFixed(0) + 's di anticipo.'
         });
       }

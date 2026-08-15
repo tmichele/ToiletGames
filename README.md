@@ -15,7 +15,7 @@ da `file://`) e giochi.
 | 🏒 **Air Hockey** | Tavolo ad aria contro la CPU | Il portiere avversario copre meglio la porta, rientra più in fretta dopo il tiro, la sua porta si restringe |
 | 🐹 **Talpe** | Whack a mole a tempo | Restano fuori sempre meno (1,5s al 1° livello, 0,4s al 9°) e sono più numerose; bombe dal 3°, grigie come le talpe e col grigio ogni tanto scambiato: conta solo la miccia |
 | 🔴 **Forza 4** | Quattro di fila, vs CPU o in due | La CPU guarda sempre più mosse avanti (minimax) e smette di svarionare |
-| 🔢 **Tessere** | Rompicapo scorrevole (il «quindici») | Griglia da 3×3 (livelli 1-2) a 4×4 e 5×5, mescolamento più profondo; il tempo cresce con la griglia — un minuto scarso per il 3×3, due per il 4×4, oltre tre per il 5×5 |
+| 🔢 **Tessere** | Rompicapo scorrevole (il «quindici») | Griglia da 3×3 (livelli 1-2) a 4×4 e 5×5, mescolamento più profondo; il tempo cresce con la griglia — un paio di minuti per il 3×3, quattro per il 4×4, oltre sei per il 5×5 |
 | 🧭 **Labirinto** | Prima persona, con una mappa che si dimentica | Labirinto più grande, memoria della mappa più corta (24s al 1° livello, 10s al 10°), meno alberi, vista più corta |
 
 Il **Labirinto** si gioca in prima persona con il joystick. La pianta non è mai
