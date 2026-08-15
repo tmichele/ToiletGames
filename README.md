@@ -74,9 +74,16 @@ open index.html            # oppure doppio click sul file
 
 Funziona anche servito da un web server statico, ma non è necessario.
 
-**Comandi:** frecce o WASD da tastiera, swipe e pad a schermo da telefono,
-trascinamento del dito per racchette e paletta, tasti 1-9 per i giochi a
-riquadri. `Esc` o il pulsante ⏸ mettono in pausa.
+**Comandi:** frecce o WASD da tastiera, pad e leva a schermo da telefono,
+trascinamento del dito dove serve, tasti 1-9 per i giochi a riquadri. `Esc` o il
+pulsante ⏸ mettono in pausa.
+
+**Mentre giochi lo schermo è tutto campo e comandi**: niente da scorrere sotto.
+La classifica 🏆 e le istruzioni ❓ del gioco aperto stanno nelle icone in alto a
+destra, accanto ad audio e profilo; aprirle mette in pausa, e si chiudono con la
+✕, con `Esc` o toccando fuori. Il campo si adatta allo spazio disponibile
+mantenendo le proporzioni del gioco, quindi su schermi alti o bassi cambia la
+dimensione, non l'inquadratura.
 
 I dati (classifiche, nome giocatore, audio on/off) stanno in `localStorage`:
 restano sul dispositivo, non vanno da nessuna parte. Se lo storage non è

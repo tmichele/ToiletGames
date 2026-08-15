@@ -29,7 +29,8 @@ TG.registry.register({
   scoreLabel: 'Punti',            // etichetta nell'HUD
   controls: 'dpad',               // 'dpad' | 'lr' | 'lr-big' | 'pointer' | 'action' | 'none'
   actionLabel: '',                // se valorizzato aggiunge il pulsante azione
-  viewport: { w: 360, h: 480 },   // coordinate logiche: il canvas si adatta da solo
+  viewport: { w: 360, h: 480 },   // coordinate logiche: il canvas ci si adatta,
+                                  // scalando per stare nello spazio disponibile
   howto: '<b>Comandi:</b> frecce o swipe.',
 
   levelInfo: function (level) {   // opzionale, mostrato prima di ogni livello
@@ -98,7 +99,13 @@ statistiche.
 | `api.sfx` | `click`, `pick`, `hit`, `bounce`, `fail`, `tone(freq, durata, tipo, volume)` |
 
 Il gioco **non** deve gestire pausa, ridimensionamento, ciclo di rendering,
-classifica o cambio livello: sono già del motore.
+classifica o cambio livello: sono già del motore. Nemmeno la schermata delle
+istruzioni: il testo di `howto` finisce nella finestra che si apre dall'icona ❓
+in alto, e la classifica in quella dell'icona 🏆.
+
+Il `viewport` va scelto pensando che il campo verrà scalato per riempire lo
+spazio fra HUD e comandi, mantenendo le proporzioni: un rapporto molto largo o
+molto alto lascia bande vuote sui telefoni.
 
 ## Regole per la difficoltà
 

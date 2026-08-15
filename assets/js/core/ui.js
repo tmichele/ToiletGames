@@ -62,8 +62,8 @@ TG.ui = (function () {
 
   function setHudLabels(game) {
     el.scoreLabel.textContent = game.scoreLabel;
-    el.boardTitle.textContent = 'Classifica · ' + game.title;
     el.howto.innerHTML = game.howto;
+    el.modalGame = game;
   }
 
   function bump(node) {
@@ -131,10 +131,30 @@ TG.ui = (function () {
 
   function hideOverlay() { el.overlay.hidden = true; }
 
+  /* ---------- finestre di classifica e istruzioni ---------- */
+
+  function showModal(quale) {
+    var inClassifica = quale === 'classifica';
+    el.modalTitle.textContent = (inClassifica ? 'Classifica' : 'Come si gioca') +
+      (el.modalGame ? ' · ' + el.modalGame.title : '');
+    el.modalBoard.hidden = !inClassifica;
+    el.modalHelp.hidden = inClassifica;
+    el.modal.hidden = false;
+  }
+
+  function hideModal() { el.modal.hidden = true; }
+
+  function isModalOpen() { return !el.modal.hidden; }
+
   function showView(name) {
     el.viewHome.hidden = name !== 'home';
     el.viewGame.hidden = name !== 'game';
     el.back.hidden = name !== 'game';
+    el.boardBtn.hidden = name !== 'game';
+    el.helpBtn.hidden = name !== 'game';
+    hideModal();
+    // in partita la pagina non scorre: campo e comandi si prendono lo schermo
+    document.body.classList.toggle('is-playing', name === 'game');
   }
 
   return {
@@ -148,6 +168,9 @@ TG.ui = (function () {
     renderBoard: renderBoard,
     showOverlay: showOverlay,
     hideOverlay: hideOverlay,
+    showModal: showModal,
+    hideModal: hideModal,
+    isModalOpen: isModalOpen,
     showView: showView
   };
 })();

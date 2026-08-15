@@ -15,6 +15,8 @@
   <button class="topbar__back" id="btn-back" hidden aria-label="Torna all'elenco">←</button>
   <h1 class="topbar__logo"><span aria-hidden="true">🚽</span> Toilet<span class="accent">Games</span></h1>
   <div class="topbar__actions">
+    <button class="icon-btn" id="btn-board" title="Classifica" aria-label="Classifica del gioco" hidden>🏆</button>
+    <button class="icon-btn" id="btn-help" title="Istruzioni" aria-label="Come si gioca" hidden>❓</button>
     <button class="icon-btn" id="btn-sound" title="Audio" aria-label="Attiva o disattiva l'audio">🔊</button>
     <button class="icon-btn" id="btn-profile" title="Giocatore" aria-label="Cambia nome giocatore">👤</button>
   </div>
@@ -47,16 +49,27 @@
   </div>
 
   <div class="touch-controls" id="touch-controls" hidden></div>
-
-  <section class="panel">
-    <div class="panel__head">
-      <h2 id="board-title">Classifica</h2>
-      <button class="link-btn" id="btn-clear-board">Azzera</button>
-    </div>
-    <ol class="board" id="board"></ol>
-    <p class="hint" id="game-howto"></p>
-  </section>
 </main>
+
+<!-- Classifica e istruzioni non stanno più sotto al campo: si aprono dalle
+     icone in alto a destra, così lo schermo resta tutto per il gioco. -->
+<div class="modal" id="modal" hidden>
+  <div class="modal__card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal__head">
+      <h2 id="modal-title">Classifica</h2>
+      <button class="icon-btn" id="modal-close" aria-label="Chiudi">✕</button>
+    </div>
+    <div class="modal__body">
+      <section id="modal-board">
+        <ol class="board" id="board"></ol>
+        <button class="link-btn" id="btn-clear-board">Azzera la classifica</button>
+      </section>
+      <section id="modal-help" hidden>
+        <p class="hint" id="game-howto"></p>
+      </section>
+    </div>
+  </div>
+</div>
 
 <script src="assets/js/core/util.js"></script>
 <script src="assets/js/core/storage.js"></script>

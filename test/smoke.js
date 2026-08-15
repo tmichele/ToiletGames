@@ -464,12 +464,69 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   check('il checkpoint sopravvive al ricaricamento',
     (await page.evaluate(() => TG.scores.checkpoint('zzztest'))) === 5);
 
+  // ---- schermo tutto al gioco, pannelli nelle icone in alto ----
+  console.log('\n[schermo e pannelli]');
+  await page.goto(URL + '#/g/serpente');
+  await sleep(400);
+  await page.click('.btn:has-text("Gioca")');
+  await sleep(400);
+
+  const misure = await page.evaluate(() => {
+    const c = document.getElementById('canvas').getBoundingClientRect();
+    return {
+      larghezza: Math.round(c.width), altezza: Math.round(c.height),
+      fondo: Math.round(c.bottom),
+      scroll: document.documentElement.scrollHeight,
+      finestra: window.innerHeight,
+      controlli: Math.round(document.getElementById('touch-controls').getBoundingClientRect().bottom)
+    };
+  });
+  check('la pagina non scorre mentre giochi', misure.scroll <= misure.finestra + 1,
+    misure.scroll + ' vs ' + misure.finestra);
+  check('il campo sta dentro allo schermo', misure.fondo <= misure.finestra,
+    'fondo canvas ' + misure.fondo);
+  check('anche i comandi stanno dentro', misure.controlli <= misure.finestra + 1,
+    'fondo comandi ' + misure.controlli);
+  check('il campo usa lo spazio disponibile', misure.altezza > 250,
+    misure.larghezza + '×' + misure.altezza);
+
+  check('classifica e istruzioni sono icone in alto',
+    (await page.isVisible('#btn-board')) && (await page.isVisible('#btn-help')));
+  await page.click('#btn-board');
+  await sleep(250);
+  check('l\'icona apre la classifica', await page.isVisible('#modal'));
+  check('la classifica sa di che gioco parla',
+    (await page.textContent('#modal-title')).includes('Serpente'),
+    await page.textContent('#modal-title'));
+  check('aprire un pannello mette in pausa',
+    (await page.evaluate(() => TG.engine.getState())) === 'paused');
+  await page.click('#modal-close');
+  await sleep(200);
+  check('si chiude', !(await page.isVisible('#modal')));
+
+  await page.click('#btn-help');
+  await sleep(250);
+  check('l\'altra icona apre le istruzioni',
+    (await page.textContent('#modal-title')).includes('Come si gioca'),
+    await page.textContent('#modal-title'));
+  check('le istruzioni sono quelle del gioco',
+    (await page.textContent('#game-howto')).includes('frecce'));
+  await page.keyboard.press('Escape');
+  await sleep(200);
+  check('anche Esc chiude il pannello', !(await page.isVisible('#modal')));
+
+  await page.click('#btn-back');
+  await sleep(300);
+  check('in home le icone di gioco spariscono',
+    !(await page.isVisible('#btn-board')) && !(await page.isVisible('#btn-help')));
+  check('e la home torna a scorrere',
+    !(await page.evaluate(() => document.body.classList.contains('is-playing'))));
+
   // ---- persistenza + deep link ----
   console.log('\n[persistenza]');
   await page.goto(URL + '#/g/serpente');
   await sleep(400);
   check('deep link apre il gioco', await page.isVisible('#view-game'));
-  check('titolo classifica corretto', (await page.textContent('#board-title')).includes('Serpente'));
   await page.goto(URL);
   await sleep(400);
   check('classifiche sopravvivono al reload', (await page.textContent('#game-grid')).includes('record'));

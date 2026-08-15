@@ -24,14 +24,26 @@ TG.engine = (function () {
 
   /* ---------- dimensionamento ---------- */
 
+  /* Il campo occupa tutto lo spazio che gli lascia la pagina, mantenendo le
+     proporzioni del gioco: si sceglie il fattore che sta dentro sia in
+     larghezza sia in altezza. Prima si scalava solo sulla larghezza, e su
+     schermi bassi il canvas usciva dallo schermo. */
   function resize() {
     if (!canvas) return;
-    var cssW = stage.clientWidth || 320;
-    var cssH = Math.round(cssW * view.h / view.w);
+    var boxW = stage.clientWidth || 320;
+    var boxH = stage.clientHeight || Math.round(boxW * view.h / view.w);
+    var scala = Math.min(boxW / view.w, boxH / view.h);
+    if (!isFinite(scala) || scala <= 0) scala = boxW / view.w;
+
+    var cssW = Math.max(1, Math.floor(view.w * scala));
+    var cssH = Math.max(1, Math.floor(view.h * scala));
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    canvas.style.width = cssW + 'px';
     canvas.style.height = cssH + 'px';
     canvas.width = Math.round(cssW * dpr);
     canvas.height = Math.round(cssH * dpr);
+
     var s = canvas.width / view.w;
     ctx.setTransform(s, 0, 0, s, 0, 0);
     ctx.imageSmoothingEnabled = true;

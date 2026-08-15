@@ -23,8 +23,14 @@
     best: document.getElementById('hud-best'),
     scoreLabel: document.getElementById('hud-score-label'),
     board: document.getElementById('board'),
-    boardTitle: document.getElementById('board-title'),
     clearBoard: document.getElementById('btn-clear-board'),
+    boardBtn: document.getElementById('btn-board'),
+    helpBtn: document.getElementById('btn-help'),
+    modal: document.getElementById('modal'),
+    modalTitle: document.getElementById('modal-title'),
+    modalBoard: document.getElementById('modal-board'),
+    modalHelp: document.getElementById('modal-help'),
+    modalClose: document.getElementById('modal-close'),
     touchControls: document.getElementById('touch-controls'),
     howto: document.getElementById('game-howto')
   };
@@ -199,6 +205,22 @@
 
   el.back.addEventListener('click', goHome);
 
+  /* Classifica e istruzioni: icone in alto, finestra sopra al gioco. Se si sta
+     giocando si mette in pausa, che è quello che ci si aspetta aprendo un
+     pannello a metà partita. */
+  function apriPannello(quale) {
+    if (TG.engine.getState() === 'running') TG.engine.pause();
+    if (quale === 'classifica' && current) TG.ui.renderBoard(current.id);
+    TG.ui.showModal(quale);
+  }
+
+  el.boardBtn.addEventListener('click', function () { apriPannello('classifica'); });
+  el.helpBtn.addEventListener('click', function () { apriPannello('istruzioni'); });
+  el.modalClose.addEventListener('click', function () { TG.ui.hideModal(); });
+  el.modal.addEventListener('click', function (e) {
+    if (e.target === el.modal) TG.ui.hideModal();   // clic fuori dalla scheda
+  });
+
   el.pause.addEventListener('click', function () {
     var s = TG.engine.getState();
     if (s === 'running') TG.engine.pause();
@@ -233,6 +255,7 @@
   });
 
   window.addEventListener('keydown', function (e) {
+    if (e.code === 'Escape' && TG.ui.isModalOpen()) { TG.ui.hideModal(); return; }
     if (e.code === 'Escape') {
       var s = TG.engine.getState();
       if (s === 'running') TG.engine.pause();
