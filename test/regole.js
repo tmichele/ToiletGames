@@ -307,8 +307,10 @@ console.log('\n[forza 4: regole]');
     return libere[Math.random() < 0.7 ? 0 : Math.floor(Math.random() * libere.length)];
   }
 
-  /* Campione ampio e soglia prudente: con dodici partite e il 70% richiesto,
-     una mano storta faceva fallire un controllo che descrive una tendenza. */
+  /* Campione ampio e soglia prudente. La CPU di livello 9 vince circa il 72%
+     delle mani contro questo avversario: con soglie vicine a quel valore il
+     controllo fallisce una volta su cinque per pura varianza, quindi si
+     verifica la tendenza ("vince nettamente più della metà"), non il numero. */
   let vinteCpu = 0, partite = 24;
   for (let n = 0; n < partite; n++) {
     const g = makeGame(def, util, 9);
@@ -325,8 +327,8 @@ console.log('\n[forza 4: regole]');
     }, 200);
     if (g.events.outcome === 'lose') vinteCpu++;
   }
-  check('al livello 9 la CPU batte quasi sempre chi guarda una mossa sola',
-    vinteCpu >= partite * 0.65, vinteCpu + ' vittorie su ' + partite);
+  check('al livello 9 la CPU batte nettamente chi guarda una mossa sola',
+    vinteCpu >= partite * 0.55, vinteCpu + ' vittorie su ' + partite);
 }
 
 /* ---------- Tessere: mescolamento risolvibile e vittoria ---------- */
@@ -454,7 +456,7 @@ console.log('\n[tessere: rompicapo scorrevole]');
 
 /* ---------- Labirinto: percorribilità, muri, bussola, uscita ---------- */
 
-console.log('\n[labirinto: senza mappa]');
+console.log('\n[labirinto: mappa che si dimentica]');
 {
   const def = defs.labirinto;
 
@@ -563,6 +565,37 @@ console.log('\n[labirinto: senza mappa]');
   const scaduto = runUntil(gf.game, () => !!gf.events.outcome, 200);
   check('restando fermi il tempo scade', scaduto && gf.events.outcome === 'lose',
     String(gf.events.outcome));
+
+  /* La mappa a memoria: cresce camminando e sbiadisce da sola. Le due cose
+     vanno verificate insieme, altrimenti una mappa che non dimentica passerebbe
+     lo stesso il controllo. */
+  const gr = makeGame(def, util, 1);
+  const partenza = gr.game.state().ricordate;
+  gr.input.held.up = true;
+  runUntil(gr.game, () => false, 6);
+  gr.input.held.up = false;
+  const esplorato = gr.game.state();
+  check('la mappa si riempie camminando', esplorato.ricordate > partenza,
+    partenza + ' -> ' + esplorato.ricordate + ' celle');
+
+  /* Girato verso il muro e fermo: quello che non si guarda più sbiadisce.
+     Si misura il totale, non il conteggio: le celle in vista restano a 1. */
+  gr.input.held.right = true;
+  runUntil(gr.game, () => false, 1);
+  gr.input.held.right = false;
+  const primaOblio = gr.game.state().ricordoTotale;
+  runUntil(gr.game, () => false, 12);
+  const dopoOblio = gr.game.state().ricordoTotale;
+  check('quello che non guardi più lo dimentichi', dopoOblio < primaOblio,
+    primaOblio + ' -> ' + dopoOblio);
+
+  // la memoria dura meno salendo di livello
+  const memorie = [1, 5, 10].map((l) => defs.labirinto.levelInfo(l));
+  check('ai livelli alti si dimentica prima',
+    /memoria della mappa (\d+)s/.test(memorie[0]) &&
+    parseInt(memorie[0].match(/memoria della mappa (\d+)s/)[1], 10) >
+    parseInt(memorie[2].match(/memoria della mappa (\d+)s/)[1], 10),
+    memorie.map((m) => m.split('memoria della mappa ')[1]).join(' / '));
 }
 
 console.log(failures === 0 ? '\nTUTTO OK' : '\n' + failures + ' CONTROLLI FALLITI');

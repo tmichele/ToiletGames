@@ -16,14 +16,17 @@ da `file://`) e giochi.
 | 🐹 **Talpe** | Whack a mole a tempo | Restano fuori sempre meno (1,5s al 1° livello, 0,4s al 9°) e sono più numerose; bombe dal 3°, grigie come le talpe e col grigio ogni tanto scambiato: conta solo la miccia |
 | 🔴 **Forza 4** | Quattro di fila, vs CPU o in due | La CPU guarda sempre più mosse avanti (minimax) e smette di svarionare |
 | 🔢 **Tessere** | Rompicapo scorrevole (il «quindici») | Griglia da 3×3 a 5×5, mescolamento più profondo, meno tempo |
-| 🧭 **Labirinto** | Vista in prima persona, senza mappa | Labirinto più grande, meno alberi di riferimento, vista più corta, meno tempo |
+| 🧭 **Labirinto** | Prima persona, con una mappa che si dimentica | Labirinto più grande, memoria della mappa più corta (24s al 1° livello, 10s al 10°), meno alberi, vista più corta |
 
-Il **Labirinto** si gioca in prima persona con il joystick e non mostra mai la
-pianta: per orientarsi ci sono la bussola (indica dove sta l'uscita, non come
-arrivarci), gli alberi che spuntano oltre i muri — fermi, e diversi uno
-dall'altro per tinta e sagoma — e i dettagli di pareti e pavimento, che in ogni
-punto sono sempre gli stessi. La scena è disegnata in raycasting sul canvas 2D,
-senza WebGL.
+Il **Labirinto** si gioca in prima persona con il joystick. La pianta non è mai
+data: si disegna da sé in alto a destra con quello che i tuoi occhi hanno
+davvero visto — un ventaglio di raggi marca le celle in vista — e **sbiadisce
+col tempo**, finché quello che hai visto troppo fa non lo ricordi più. Gli altri
+riferimenti sono il **numero di zona** dipinto sulle pareti (il labirinto è
+diviso in nove settori, ognuno con la sua tinta), la bussola che indica dove sta
+l'uscita ma non come arrivarci, e gli alberi che spuntano oltre i muri, fermi e
+diversi uno dall'altro per tinta e sagoma. La scena è disegnata in raycasting
+sul canvas 2D, senza WebGL, a 60 fps.
 
 **Forza 4** è l'unico a due modalità: si sceglie a inizio partita fra sfida alla
 CPU e due giocatori sullo stesso dispositivo, a mosse alternate. In due, il

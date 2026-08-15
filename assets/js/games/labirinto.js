@@ -1,9 +1,10 @@
-/* Labirinto — vista in prima persona, senza mappa.
+/* Labirinto — vista in prima persona, con una mappa che si dimentica.
 
-   La pianta dall'alto non si vede mai: per orientarsi restano i dettagli delle
-   pareti e del pavimento (ogni muro ha la sua fascia colorata e il suo segno,
-   sempre gli stessi in quel punto), gli alberi che spuntano oltre i muri e una
-   bussola che indica dove sta l'uscita — la direzione, non la strada.
+   La pianta non è mai data: si disegna da sé mentre cammini, con quello che i
+   tuoi occhi hanno davvero visto, e sbiadisce col passare del tempo. Gli altri
+   riferimenti sono il numero di zona dipinto sulle pareti (il labirinto è
+   diviso in nove settori), gli alberi che spuntano oltre i muri e una bussola
+   che indica dove sta l'uscita — la direzione, non la strada.
 
    La scena è disegnata con il raycasting sul canvas 2D: niente WebGL, quindi
    funziona ovunque funzioni il resto della suite.
@@ -14,13 +15,16 @@
 (function () {
 'use strict';
 
-var FOV = Math.PI / 3;          // 60°: campo visivo che non deforma troppo
+var FOV = Math.PI / 2.3;        // ~78°: campo largo, si vede molto più ai lati
 /* Muri più bassi di una cella intera, altrimenti riempiono lo schermo: nei
    corridoi si è sempre a mezzo metro da una parete e non si vedrebbe più nulla
    sopra — né cielo né alberi, che sono l'unico riferimento lontano. */
 var ALTEZZA_MURO = 0.56;
 var OCCHIO = ALTEZZA_MURO / 2;  // altezza dello sguardo, a metà parete
 var RAGGIO = 0.22;              // ingombro del giocatore, per le collisioni
+var RAGGI_MEMORIA = 26;         // raggi del ventaglio che alimenta la mappa
+var MAPPA_PX = 104;             // lato della mappina in alto a destra
+
 
 function config(level) {
   var celle = Math.min(4 + level, 11);          // celle per lato del labirinto
@@ -29,6 +33,10 @@ function config(level) {
     celle: celle,
     lato: celle * 2 + 1,                        // griglia muri+corridoi
     tempo: Math.max(45, 40 + celle * 14 - level * 3),
+    /* Quanto dura il ricordo di una cella già vista: la mappa si disegna
+       camminando e sbiadisce da sola, quindi girare a vuoto non basta più —
+       bisogna ricordarsi la strada mentre la si percorre. */
+    memoria: Math.max(8, 26 - level * 1.6),
     alberi: Math.max(4, 9 - Math.floor(level / 3)),  // meno punti di riferimento
     nebbia: Math.max(4.5, 11 - level * 0.5),    // oltre questa distanza si perde nel buio
     passo: 2.1,                                 // celle al secondo
@@ -47,16 +55,20 @@ TG.registry.register({
   howto: '<b>Comandi:</b> la leva sotto il campo — avanti/indietro per muoverti, ' +
     'destra/sinistra per girarti — oppure le frecce/WASD. ' +
     'Con ⏸ metti in pausa quando vuoi. ' +
-    '<b>Niente mappa:</b> per orientarti hai la <b>bussola</b> in alto, che punta ' +
-    'sempre verso l\'uscita ma non conosce i corridoi, gli <b>alberi</b> che si ' +
-    'vedono oltre i muri (stanno fermi: sono il tuo nord) e i <b>dettagli</b> di ' +
-    'pareti e pavimento, diversi zona per zona e sempre uguali a sé stessi. ' +
-    'L\'uscita è la porta verde.',
+    '<b>La mappa te la fai tu:</b> in alto a destra compare quello che vedi ' +
+    'mentre cammini, ma <b>sbiadisce col tempo</b> — quello che hai visto troppo ' +
+    'tempo fa lo dimentichi, e ai livelli alti dura pochi secondi. ' +
+    'Per orientarti hai anche la <b>bussola</b>, che punta verso l\'uscita ma non ' +
+    'conosce i corridoi, gli <b>alberi</b> che si vedono oltre i muri (stanno ' +
+    'fermi: sono il tuo nord) e il <b>numero di zona</b> dipinto sulle pareti: il ' +
+    'labirinto è diviso in nove settori, da 1 in alto a sinistra a 9 in basso a ' +
+    'destra. L\'uscita è la porta verde.',
 
   levelInfo: function (level) {
     var c = config(level);
     return 'Livello ' + level + ': labirinto ' + c.celle + '×' + c.celle + ', ' +
-      Math.round(c.tempo) + 's, ' + c.alberi + ' alberi di riferimento';
+      Math.round(c.tempo) + 's, ' + c.alberi + ' alberi di riferimento, ' +
+      'memoria della mappa ' + Math.round(c.memoria) + 's';
   },
 
   create: function (api) {
@@ -66,6 +78,7 @@ TG.registry.register({
     var STRISCIA = 3;                   // px per raggio: compromesso resa/velocità
 
     var cfg, mappa, giocatore, uscita, alberi, timeLeft, finito, visitate, semi;
+    var ricordo;      // per cella: 1 appena vista, 0 dimenticata
 
     /* ---------- generazione ---------- */
 
@@ -108,13 +121,29 @@ TG.registry.register({
       return n - Math.floor(n);
     }
 
+    /* Il labirinto è diviso in nove settori: ogni muro porta dipinto il numero
+       del proprio, così si capisce in che parte del labirinto ci si trova senza
+       bisogno di ricordarsi le singole pareti. */
+    function zona(x, y) {
+      var q = Math.floor(x / (cfg.lato / 3));
+      var r = Math.floor(y / (cfg.lato / 3));
+      return api.util.clamp(r, 0, 2) * 3 + api.util.clamp(q, 0, 2) + 1;
+    }
+
+    /* Ogni zona ha la sua tinta dominante: entrando in un settore diverso te ne
+       accorgi dal colore delle pareti prima ancora di leggerne il numero. */
+    var TINTE_ZONA = [
+      [138, 104, 84], [96, 118, 140], [120, 126, 92],
+      [132, 100, 122], [110, 118, 122], [140, 124, 88],
+      [92, 128, 118], [118, 108, 148], [128, 112, 100]
+    ];
+
     function coloreMuro(x, y, lato) {
       var s = seme(x, y);
-      var tinta = Math.floor(s * 5);
-      var base = [
-        [120, 113, 108], [125, 105, 90], [100, 116, 120], [118, 110, 130], [110, 120, 105]
-      ][tinta];
-      var ombra = lato === 1 ? 0.74 : 1;         // pareti nord/sud più scure
+      var base = TINTE_ZONA[(zona(x, y) - 1) % TINTE_ZONA.length];
+      // variazione da muro a muro, dentro la tinta della zona
+      var v = 0.86 + s * 0.28;
+      var ombra = (lato === 1 ? 0.74 : 1) * v;   // pareti nord/sud più scure
       return { r: base[0] * ombra, g: base[1] * ombra, b: base[2] * ombra, s: s };
     }
 
@@ -160,6 +189,8 @@ TG.registry.register({
       finito = false;
       visitate = {};
       visitate['1,1'] = true;
+      ricordo = [];
+      for (var m = 0; m < cfg.lato * cfg.lato; m++) ricordo.push(0);
     }
 
     /* ---------- movimento ---------- */
@@ -216,10 +247,45 @@ TG.registry.register({
       }
     }
 
+    /* La mappa ricorda quello che si è visto, non solo dove si è passati: si
+       tira un ventaglio di raggi e si marcano le celle attraversate. */
+    function aggiornaRicordo() {
+      var i, k;
+      for (i = 0; i < RAGGI_MEMORIA; i++) {
+        var ang = giocatore.ang - FOV / 2 + (i / (RAGGI_MEMORIA - 1)) * FOV;
+        var dx = Math.cos(ang), dy = Math.sin(ang);
+        var x = giocatore.x, y = giocatore.y;
+        var passi = Math.ceil(cfg.nebbia * 4);
+        for (k = 0; k < passi; k++) {
+          x += dx * 0.25;
+          y += dy * 0.25;
+          var cx = Math.floor(x), cy = Math.floor(y);
+          if (cx < 0 || cy < 0 || cx >= cfg.lato || cy >= cfg.lato) break;
+          ricordo[idx(cx, cy)] = 1;
+          if (muro(cx, cy)) break;          // oltre il muro non si vede
+        }
+      }
+      // anche la cella sotto i piedi e le adiacenti, che si toccano con mano
+      var px = Math.floor(giocatore.x), py = Math.floor(giocatore.y);
+      [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) {
+        var qx = px + d[0], qy = py + d[1];
+        if (qx >= 0 && qy >= 0 && qx < cfg.lato && qy < cfg.lato) ricordo[idx(qx, qy)] = 1;
+      });
+    }
+
+    function sbiadisci(dt) {
+      var calo = dt / cfg.memoria;
+      for (var i = 0; i < ricordo.length; i++) {
+        if (ricordo[i] > 0) ricordo[i] = Math.max(0, ricordo[i] - calo);
+      }
+    }
+
     function update(dt) {
       while (api.input.take()) { /* qui contano i tasti tenuti */ }
       if (finito) return;
       muovi(dt);
+      sbiadisci(dt);
+      aggiornaRicordo();
       timeLeft -= dt;
       if (timeLeft <= 0) {
         finito = true;
@@ -320,6 +386,12 @@ TG.registry.register({
        riconoscibile invece di una parete qualunque. */
     function drawMuri(ctx) {
       var orizzonte = TOP + VH / 2;
+      /* Mentre si tirano i raggi si tiene nota di ogni parete vista e di quanto
+         spazio occupa sullo schermo: serve dopo, per scriverci sopra il numero
+         di zona come un'etichetta vera invece che a strisce (a strisce esce
+         specchiata e illeggibile, perché la parete la si vede da un lato o
+         dall'altro). */
+      var facce = {};
       var cosA = Math.cos(giocatore.ang), sinA = Math.sin(giocatore.ang);
       var piano = (W / 2) / Math.tan(FOV / 2);
 
@@ -359,6 +431,14 @@ TG.registry.register({
           : giocatore.x + dist * rx;
         wallU -= Math.floor(wallU);
 
+        var chiaveFaccia = mapX + ',' + mapY + ',' + lato;
+        var f = facce[chiaveFaccia];
+        if (!f) facce[chiaveFaccia] = f = {
+          x0: x, x1: x, y0: y0, h: h, dist: dist, zona: zona(mapX, mapY)
+        };
+        f.x1 = x + STRISCIA;
+        if (dist < f.dist) { f.dist = dist; f.y0 = y0; f.h = h; }
+
         ctx.fillStyle = ombreggia(col, dist);
         ctx.fillRect(x, y0, STRISCIA + 1, h);
 
@@ -369,11 +449,8 @@ TG.registry.register({
         }, dist);
         ctx.fillRect(x, y0 + h * fascia, STRISCIA + 1, Math.max(1, h * 0.06));
 
-        // segno verticale: una tacca in una posizione fissa della parete
-        if (Math.abs(wallU - (0.2 + col.s * 0.6)) < 0.05) {
-          ctx.fillStyle = ombreggia({ r: 210, g: 200, b: 170 }, dist);
-          ctx.fillRect(x, y0 + h * 0.25, STRISCIA + 1, Math.max(1, h * 0.5));
-        }
+        /* Numero della zona dipinto sul muro: si disegna a strisce come tutto
+           il resto, leggendo la colonna giusta della cifra 3×5. */
 
         // giunzione fra i blocchi, per non avere pareti piatte
         if (wallU < 0.03 || wallU > 0.97) {
@@ -387,6 +464,93 @@ TG.registry.register({
           ctx.fillRect(x, y0 + h * 0.15, STRISCIA + 1, h * 0.7);
         }
       }
+
+      disegnaNumeriZona(ctx, facce);
+    }
+
+    /* Il numero della zona, dipinto al centro di ogni parete abbastanza larga
+       da poterlo leggere. Il ritaglio impedisce che sconfini sulla parete
+       accanto quando due facce si toccano sullo schermo. */
+    function disegnaNumeriZona(ctx, facce) {
+      Object.keys(facce).forEach(function (k) {
+        var f = facce[k];
+        var largh = f.x1 - f.x0;
+        if (largh < 16 || f.dist > cfg.nebbia * 0.9) return;
+
+        var dim = api.util.clamp(Math.min(f.h * 0.26, largh * 0.6), 9, 46);
+        var cx = (f.x0 + f.x1) / 2;
+        var cy = f.y0 + f.h * 0.45;
+        var buio = api.util.clamp(1 - f.dist / cfg.nebbia, 0.25, 1);
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(f.x0, f.y0, largh, f.h);
+        ctx.clip();
+
+        ctx.fillStyle = 'rgba(18,20,26,' + (0.5 * buio).toFixed(2) + ')';
+        api.util.roundRect(ctx, cx - dim * 0.45, cy - dim * 0.62, dim * 0.9, dim * 1.24, dim * 0.16);
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(240,236,220,' + buio.toFixed(2) + ')';
+        ctx.font = 'bold ' + Math.round(dim) + 'px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(f.zona), cx, cy + 1);
+        ctx.textBaseline = 'alphabetic';
+        ctx.restore();
+      });
+    }
+
+    /* Mappa a memoria: compare camminando e sbiadisce da sola. Non è un aiuto
+       gratuito — è quello che ricordi, e dura poco. */
+    function drawMappa(ctx) {
+      var passo = MAPPA_PX / cfg.lato;
+      var ox = W - MAPPA_PX - 8, oy = TOP + 8;
+
+      ctx.fillStyle = 'rgba(5,7,12,0.55)';
+      api.util.roundRect(ctx, ox - 4, oy - 4, MAPPA_PX + 8, MAPPA_PX + 8, 8);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 1;
+      api.util.roundRect(ctx, ox - 4, oy - 4, MAPPA_PX + 8, MAPPA_PX + 8, 8);
+      ctx.stroke();
+
+      for (var y = 0; y < cfg.lato; y++) {
+        for (var x = 0; x < cfg.lato; x++) {
+          var q = ricordo[idx(x, y)];
+          if (q <= 0.02) continue;
+          var px = ox + x * passo, py = oy + y * passo;
+          if (muro(x, y)) ctx.fillStyle = 'rgba(120,134,158,' + (q * 0.75).toFixed(2) + ')';
+          else ctx.fillStyle = 'rgba(56,189,248,' + (q * 0.30).toFixed(2) + ')';
+          ctx.fillRect(px, py, Math.ceil(passo), Math.ceil(passo));
+        }
+      }
+
+      // l'uscita si segna solo se te la ricordi
+      if (ricordo[idx(uscita.x, uscita.y)] > 0.02) {
+        ctx.fillStyle = 'rgba(74,222,128,' + ricordo[idx(uscita.x, uscita.y)].toFixed(2) + ')';
+        ctx.fillRect(ox + uscita.x * passo, oy + uscita.y * passo,
+          Math.ceil(passo), Math.ceil(passo));
+      }
+
+      // dove sei e dove guardi: questo non si dimentica
+      var gx = ox + giocatore.x * passo, gy = oy + giocatore.y * passo;
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      ctx.moveTo(gx + Math.cos(giocatore.ang) * passo * 1.1,
+                 gy + Math.sin(giocatore.ang) * passo * 1.1);
+      ctx.lineTo(gx + Math.cos(giocatore.ang + 2.5) * passo * 0.7,
+                 gy + Math.sin(giocatore.ang + 2.5) * passo * 0.7);
+      ctx.lineTo(gx + Math.cos(giocatore.ang - 2.5) * passo * 0.7,
+                 gy + Math.sin(giocatore.ang - 2.5) * passo * 0.7);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.font = '9px ui-monospace, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = 'rgba(230,237,243,0.45)';
+      ctx.fillText('zona ' + zona(Math.floor(giocatore.x), Math.floor(giocatore.y)),
+        ox, oy + MAPPA_PX + 12);
     }
 
     function drawBussola(ctx) {
@@ -449,6 +613,7 @@ TG.registry.register({
       // coprono in basso e restano visibili solo le chiome, come deve essere
       drawAlberi(ctx);
       drawMuri(ctx);
+      drawMappa(ctx);
       drawBussola(ctx);
     }
 
@@ -468,6 +633,9 @@ TG.registry.register({
         bussola: Math.round((Math.atan2(dy, dx) - giocatore.ang) * 100) / 100,
         distanza: Math.round(Math.hypot(dx, dy) * 100) / 100,
         celleVisitate: Object.keys(visitate).length,
+        ricordate: ricordo.reduce(function (n, q) { return n + (q > 0.02 ? 1 : 0); }, 0),
+        ricordoTotale: Math.round(ricordo.reduce(function (a, b) { return a + b; }, 0) * 100) / 100,
+        zona: zona(Math.floor(giocatore.x), Math.floor(giocatore.y)),
         alberi: alberi.length,
         timeLeft: Math.round(timeLeft * 10) / 10,
         finito: finito
