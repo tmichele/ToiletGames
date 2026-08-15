@@ -155,6 +155,67 @@ const BOTS = {
     };
   },
 
+  /* In Orda si spara da soli: l'unica cosa che il bot decide è dove stare.
+
+     Somma le spinte: i mostri respingono (più vicini, più forte), le casse
+     attirano, i bordi respingono — finire in un angolo con l'orda addosso è la
+     morte. La direzione scelta viene poi ammorbidita, perché una leva che
+     cambia idea sessanta volte al secondo non è un pollice umano ed è anche
+     peggio: si resta sul posto a vibrare.
+
+     Provata anche una versione che valutava venti direzioni immaginando mezzo
+     secondo avanti: giocava peggio di questa, quindi è rimasta questa. Il bot
+     serve a misurare, non a vincere.
+
+     La reazione è il ritardo con cui vede l'orda, l'errore un tremolio sulla
+     scelta, la velocità quanto affonda la leva. */
+  orda: (profile) => (api, game) => {
+    const delay = delayLine(profile);
+    const stick = api.input.stick;
+    const spinta = Math.min(1, profile.speed / 400);
+    const W = api.width, H = api.height, TOP = 46;
+    let dirX = 0, dirY = -1;
+    return function (s, dt) {
+      const visti = delay(s.nemici.map((n) => ({ x: n.x, y: n.y, r: n.r })), dt);
+      let fx = 0, fy = 0;
+      visti.forEach((n) => {
+        const dx = s.giocatore.x - n.x, dy = s.giocatore.y - n.y;
+        const d = Math.max(10, Math.hypot(dx, dy) - n.r);
+        const peso = 9000 / (d * d);
+        fx += dx / d * peso; fy += dy / d * peso;
+      });
+      s.palleNemiche.forEach((p) => {         // scansa anche i colpi in arrivo
+        const dx = s.giocatore.x - p.x, dy = s.giocatore.y - p.y;
+        const d = Math.hypot(dx, dy) || 1;
+        if (d < 90) { fx += dx / d * 8; fy += dy / d * 8; }
+      });
+      if (s.casse.length) {                   // la cassa più vicina attira
+        let best = null, bd = Infinity;
+        s.casse.forEach((c) => {
+          const d = Math.hypot(c.x - s.giocatore.x, c.y - s.giocatore.y);
+          if (d < bd) { bd = d; best = c; }
+        });
+        fx += (best.x - s.giocatore.x) / (bd || 1) * 3;
+        fy += (best.y - s.giocatore.y) / (bd || 1) * 3;
+      }
+      const bordo = (dist) => 90 / Math.max(10, dist);
+      fx += bordo(s.giocatore.x) - bordo(W - s.giocatore.x);
+      fy += bordo(s.giocatore.y - TOP) - bordo(H - s.giocatore.y);
+      const err = profile.error / 90;
+      fx += (Math.random() * 2 - 1) * err * 3;
+      fy += (Math.random() * 2 - 1) * err * 3;
+      const len = Math.hypot(fx, fy) || 1;
+      // la mano segue la decisione, non la insegue: niente leva epilettica
+      const k = Math.min(1, dt * 12);
+      dirX += (fx / len - dirX) * k;
+      dirY += (fy / len - dirY) * k;
+      const dl = Math.hypot(dirX, dirY) || 1;
+      stick.x = dirX / dl * spinta;
+      stick.y = dirY / dl * spinta;
+      stick.attiva = true;
+    };
+  },
+
   /* Il bot dell'hockey ragiona come la CPU: si mette dietro al disco e poi ci
      passa attraverso verso la porta avversaria; altrimenti torna a coprire. */
   hockey: (profile) => (api, game) => {

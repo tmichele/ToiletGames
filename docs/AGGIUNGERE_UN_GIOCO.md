@@ -27,7 +27,7 @@ TG.registry.register({
   icon: '🎲',
   tagline: 'Una riga che spiega il gioco nella card.',
   scoreLabel: 'Punti',            // etichetta nell'HUD
-  controls: 'dpad',               // 'dpad' | 'lr' | 'lr-big' | 'pointer' | 'action' | 'none'
+  controls: 'dpad',               // 'dpad' | 'lr' | 'lr-big' | 'joystick' | 'pointer' | 'action' | 'none'
   actionLabel: '',                // se valorizzato aggiunge il pulsante azione
   viewport: { w: 360, h: 480 },   // coordinate logiche: il canvas ci si adatta,
                                   // scalando per stare nello spazio disponibile

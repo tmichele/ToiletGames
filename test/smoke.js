@@ -31,7 +31,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   console.log('\n[home]');
   const cards = await page.$$('.card');
-  check('9 giochi in elenco', cards.length === 9, cards.length + ' trovati');
+  check('10 giochi in elenco', cards.length === 10, cards.length + ' trovati');
   check('titoli presenti', (await page.textContent('#game-grid')).includes('Serpente'));
 
   const canvasHash = () => page.evaluate(() => {
@@ -108,13 +108,22 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   for (let i = 0; i < 60; i++) {
     await sleep(1000);
     const cur = await page.evaluate(() => TG.engine.getState() === 'running' ? TG.engine.inspect().game : null);
-    if (!cur) break;
+    if (!cur) {
+      /* La partita è finita prima dell'accorciamento (scatta ogni 9,5s al primo
+         livello, e una partita da fermo può chiudersi prima): se ne comincia
+         un'altra invece di dichiarare che non accorcia. Restare fermi non
+         cambia il risultato, cambia solo quanto dura. */
+      if (minNpcW < w0.npc.w) break;
+      if (!(await page.$('.btn:has-text("Rigioca")'))) break;
+      await page.click('.btn:has-text("Rigioca")');
+      continue;
+    }
     g = cur;
     minNpcW = Math.min(minNpcW, cur.npc.w);
     minMyW = Math.min(minMyW, cur.player.w);
     // non basta il punteggio: serve tempo perché scatti almeno un
-    // accorciamento (ogni 9,5s al primo livello), altrimenti si misura nulla
-    if (cur.cpuPts >= 3 && i >= 13) break;
+    // accorciamento, altrimenti si misura nulla
+    if (cur.cpuPts >= 3 && minNpcW < w0.npc.w && minMyW < w0.player.w) break;
   }
   /* Qui si verifica solo che la CPU giochi e segni: chiedere che sia in
      vantaggio significherebbe scommettere su una singola partita, e il
@@ -438,6 +447,42 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   await sleep(1000);
   check('riprendendo il tempo riparte',
     (await page.evaluate(() => TG.engine.inspect().game.timeLeft)) < inPausa);
+
+  // ---- Orda: leva, mostri, fuoco automatico ----
+  console.log('\n[orda]');
+  await page.goto(URL + '#/g/orda');
+  await sleep(400);
+  await page.click('.btn:has-text("Gioca")');
+  await sleep(600);
+  check('orda ha la leva analogica', (await page.$$('#touch-controls .stick')).length === 1);
+  const o0 = await page.evaluate(() => TG.engine.inspect().game);
+  check('si parte con tre vite e la pistola', o0.vite === 3 && o0.arma === 'pistola' && o0.colpi === -1,
+    JSON.stringify({ vite: o0.vite, arma: o0.arma, colpi: o0.colpi }));
+
+  const stickBox = await (await page.$('.stick')).boundingBox();
+  await page.mouse.move(stickBox.x + stickBox.width / 2, stickBox.y + stickBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(stickBox.x + stickBox.width * 0.12, stickBox.y + stickBox.height * 0.5, { steps: 4 });
+  await sleep(1200);
+  const o1 = await page.evaluate(() => TG.engine.inspect().game);
+  check('la leva sposta il giocatore', o1.giocatore.x < o0.giocatore.x - 10,
+    Math.round(o0.giocatore.x) + ' -> ' + Math.round(o1.giocatore.x));
+  await page.mouse.up();
+
+  /* Il fuoco è automatico: senza toccare altro devono morire dei mostri. È la
+     meccanica centrale, e nel browser si vede solo così. */
+  let uccisi = 0, ondataMax = 0;
+  for (let i = 0; i < 40; i++) {
+    const s = await page.evaluate(() => TG.engine.getState() === 'running' ? TG.engine.inspect().game : null);
+    if (!s) break;
+    uccisi = Math.max(uccisi, s.uccisi);
+    ondataMax = Math.max(ondataMax, s.ondata);
+    if (uccisi >= 5) break;
+    await sleep(250);
+  }
+  check('si spara da soli e i mostri cadono', uccisi >= 5, uccisi + ' abbattuti');
+  check('il punteggio sale', (await page.evaluate(() => TG.engine.getScore())) > 0);
+  check('le ondate partono', ondataMax >= 1, 'ondata ' + ondataMax);
 
   // ---- si riparte sempre dall'ultimo livello raggiunto ----
   console.log('\n[ripartenza]');

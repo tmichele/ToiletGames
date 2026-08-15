@@ -17,6 +17,7 @@ da `file://`) e giochi.
 | 🔴 **Forza 4** | Quattro di fila, vs CPU o in due | La CPU guarda sempre più mosse avanti (minimax) e smette di svarionare |
 | 🔢 **Tessere** | Rompicapo scorrevole (il «quindici») | Griglia da 3×3 (livelli 1-2) a 4×4 e 5×5, mescolamento più profondo; il tempo cresce con la griglia — un paio di minuti per il 3×3, quattro per il 4×4, oltre sei per il 5×5 |
 | 🧭 **Labirinto** | Prima persona, con una mappa che si dimentica | Labirinto più grande, memoria della mappa più corta (24s al 1° livello, 10s al 10°), meno alberi, vista più corta |
+| 👾 **Orda** | Sparatutto dall'alto: ondate di mostri e armi che cadono | Ondate più numerose, mostri più veloci e tipi nuovi che si aggiungono ai vecchi — scattanti dal 2°, corazzati dal 3°, tiratori dal 4°, gemelli che si sdoppiano dal 7° — con un boss ogni cinque livelli |
 
 Il **Labirinto** si gioca in prima persona con il joystick. La pianta non è mai
 data: si disegna da sé in alto a destra con quello che i tuoi occhi hanno
@@ -147,12 +148,18 @@ costerebbero partite intere: che i mattoni turbo accelerino davvero la pallina
 (senza sfondare il tetto di velocità), che gli impazziti la devino di un angolo
 che nessun rimbalzo normale produrrebbe, che il tocco di racchetta tolga punti,
 che le racchette del pong si accorcino, che il disco dell'hockey non esca dal
-tavolo nemmeno se lo schiacci in uno spigolo.
+tavolo nemmeno se lo schiacci in uno spigolo, che in Orda nessun mostro compaia
+addosso al giocatore e che finite le munizioni si torni alla pistola invece di
+restare disarmati.
 
 Il primo profilo, «fermo», non tocca niente: serve a verificare che stare fermi
 faccia perdere. Un gioco che si vince senza giocare è rotto quanto uno
 impossibile, ed è successo davvero — nel pong l'avversario sbagliava così spesso
-che una racchetta immobile al centro faceva da muro.
+che una racchetta immobile al centro faceva da muro. In Orda è successo di
+peggio: la mira è automatica, quindi restare immobili al centro voleva dire fare
+la torretta e vincere i primi livelli senza muovere un dito. Le ondate sono
+diventate folle fitte e i mostri entrano di slancio proprio per questo — chi si
+muove le scansa lo stesso, chi non si muove viene travolto.
 
 Stato attuale (percentuale di livelli vinti dal profilo indicato):
 
@@ -167,6 +174,9 @@ Stato attuale (percentuale di livelli vinti dal profilo indicato):
 | Air Hockey · bravo | 98% | 85% | 25% | 0% | 0% |
 | Talpe · medio | 100% | 88% | 35% | 13% | 0% |
 | Talpe · bravo | 100% | 83% | 33% | 8% | 3% |
+| Orda · fermo | 5% | 5% | 0% | 0% | 0% |
+| Orda · medio | 100% | 93% | 70% | 23% | 8% |
+| Orda · bravo | 100% | 100% | 85% | 57% | 10% |
 
 **Forza 4**, **Tessere** e **Labirinto** non compaiono qui: sono giochi di
 turni, di ragionamento o di orientamento, dove profili basati su riflessi non
@@ -194,3 +204,9 @@ mano: quelle righe sono stime, non misure.
 - **Un solo canvas** ridimensionato dal motore: i giochi disegnano in
   coordinate logiche fisse (`viewport`) e non si occupano di DPI o schermi.
 - **Audio sintetizzato**: nessun file da caricare, tutto offline.
+- **Orda gira a passo fisso e con un seme**: il tempo avanza sempre a 1/60 e il
+  caso esce da un generatore seminato, quindi la partita dipende solo dal seme e
+  dai comandi. Serve a poterla rigiocare identica — è quello che servirebbe per
+  una sfida in cui due persone affrontano la stessa orda e si confrontano sul
+  punteggio, senza server né tempo reale. Il test in `regole.js` verifica la
+  proprietà: stesso seme e stessi comandi, stessa partita.
