@@ -8,12 +8,19 @@
 var COLS = 7;
 var ROW_COLORS = ['#f87171', '#fb923c', '#fbbf24', '#a3e635', '#4ade80', '#22d3ee', '#c084fc'];
 var COMBO_MAX = 5;      // oltre questo il moltiplicatore non cresce più
-var TURBO_BOOST = 1.15; // quanto accelera la pallina un mattone turbo
-var GHOST_TIME = 10;    // s di pallina a intermittenza dopo un mattone fantasma
-var GHOST_MAX = 14;     // s: tetto se ne rompi altri mentre l'effetto è attivo
+/* I turbo si sommano dentro il livello: con incrementi del 15% e tetto al
+   doppio, ai livelli alti bastavano una dozzina di mattoni per portare la
+   pallina oltre quanto la racchetta possa inseguire. Meglio una spinta più
+   contenuta e un tetto più basso: resta una scelta che pesa, non una condanna. */
+var TURBO_BOOST = 1.10; // quanto accelera la pallina un mattone turbo
+/* Il fantasma è l'effetto più duro del gioco: sommato alla velocità che cresce
+   rende i livelli alti feroci. Entra quindi in punta di piedi — pochi mattoni e
+   sparizioni brevi al quinto livello — e cresce piano da lì in avanti. */
+var GHOST_TIME_MIN = 5;   // s di intermittenza alla prima comparsa
+var GHOST_TIME_MAX = 10;  // s a cui arriva ai livelli alti
 var GHOST_ON = 0.32;    // s visibile in ogni ciclo di lampeggio
 var GHOST_OFF = 0.46;   // s invisibile
-var SPEED_CAP = 2;      // volte la velocità del livello: tetto invalicabile
+var SPEED_CAP = 1.7;    // volte la velocità del livello: tetto invalicabile
 var SPECIAL_CAP = 0.8;  // quota massima di muro occupata da mattoni speciali
 
 /* I mattoni speciali costano cari se li rompi al momento sbagliato, quindi
@@ -33,7 +40,8 @@ function config(level) {
     armored: level >= 5 ? Math.min(0.12 + (level - 5) * 0.07, 0.55) : 0, // quota a 2 colpi
     turbo: level >= 2 ? Math.min(0.10 + (level - 2) * 0.03, 0.30) : 0,   // accelerano la pallina
     matto: level >= 3 ? Math.min(0.08 + (level - 3) * 0.03, 0.28) : 0,   // rimbalzo a caso
-    fantasma: level >= 4 ? Math.min(0.06 + (level - 4) * 0.02, 0.18) : 0, // pallina a intermittenza
+    fantasma: level >= 5 ? Math.min(0.025 + (level - 5) * 0.012, 0.11) : 0, // pallina a intermittenza
+    ghostTime: Math.min(GHOST_TIME_MIN + Math.max(0, level - 5) * 0.6, GHOST_TIME_MAX),
     /* Quanto può sbandare la pallina su un mattone impazzito. Cresce con il
        livello: più avanti vai, meno il rimbalzo somiglia a un rimbalzo. */
     mattoAngle: Math.min(1.3 + level * 0.06, 2),
@@ -58,7 +66,8 @@ TG.registry.register({
     '<b>Mattoni speciali:</b> quelli scuri reggono due colpi, i <b>turbo</b> (»») ' +
     'accelerano la pallina per tutto il livello, gli <b>impazziti</b> (?) la ' +
     'rimandano a un angolo qualsiasi, i <b>fantasma</b> (◌) la fanno sparire a ' +
-    'intermittenza per dieci secondi. Valgono metà punti in più, ma cambiano ' +
+    'intermittenza per qualche secondo (pochi e brevi dal quinto livello, ' +
+    'sempre di più andando avanti). Valgono metà punti in più, ma cambiano ' +
     'la partita: romperli con la combo alta è redditizio, romperli quando la ' +
     'pallina già corre è come darsi una zappata sui piedi. ' +
     '<b>Combo:</b> ogni mattone rotto senza tornare sulla racchetta vale di più ' +
@@ -75,6 +84,7 @@ TG.registry.register({
     return 'Livello ' + level + ': ' + c.rows + ' file, pallina a ' +
       Math.round(c.ballSpeed) + ' px/s' +
       (speciali.length ? ', mattoni ' + speciali.join(' e ') : '') +
+      (c.fantasma ? ' (sparizioni da ' + c.ghostTime.toFixed(0) + 's)' : '') +
       ' · mattone ' + c.brickPoints + ' pt, tocco di racchetta −' + c.paddleMalus;
   },
 
@@ -207,7 +217,8 @@ TG.registry.register({
         });
         api.sfx.tone(520, 0.12, 'sawtooth', 0.09, 900);
       } else if (b.kind === 'fantasma') {
-        ghostLeft = Math.min(ghostLeft + GHOST_TIME, GHOST_MAX);
+        // sommare due fantasmi non raddoppia il buio: c'è un tetto
+        ghostLeft = Math.min(ghostLeft + cfg.ghostTime, cfg.ghostTime * 1.4);
         ghostClock = 0;   // riparte visibile, per non sparire proprio adesso
         floaters.push({
           text: '\u25cc invisibile', x: b.x + b.w / 2, y: b.y - 12, t: 0.9, color: '#67e8f9'
@@ -443,6 +454,7 @@ TG.registry.register({
         lives: lives, bricks: remaining(), combo: combo, launched: launched,
         speed: Math.round(Math.hypot(ball.vx, ball.vy)),
         ghost: Math.round(ghostLeft * 10) / 10,
+        ghostTime: cfg.ghostTime,
         malus: malusTotale,
         ballVisible: ballVisible(),
         baseSpeed: Math.round(cfg.ballSpeed),

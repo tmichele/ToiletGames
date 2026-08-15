@@ -65,6 +65,28 @@ console.log('\n[mattoni: tipi di mattone]');
   check('i fantasma non compaiono prima del livello 4', !l3.fantasma, Object.keys(l3).join(','));
   check('corazzati e fantasma arrivano più avanti', l6.corazzato && l6.fantasma, Object.keys(l6).join(','));
 
+  /* Il fantasma è l'effetto più duro: deve entrare in punta di piedi. Si
+     controlla che al quinto livello sia raro e breve, e che cresca piano. */
+  const quotaFantasma = (level) => {
+    let visti = 0, muri = 0;
+    for (let i = 0; i < 60; i++) {
+      const s = makeGame(def, util, level).game.state();
+      visti += s.speciali.fantasma || 0;
+      muri += s.bricks;
+    }
+    return visti / muri;
+  };
+  const q5 = quotaFantasma(5), q12 = quotaFantasma(12);
+  check('al quinto livello i fantasma sono pochi', q5 > 0 && q5 < 0.06,
+    (q5 * 100).toFixed(1) + '% del muro');
+  check('e diventano più frequenti solo salendo', q12 > q5,
+    (q5 * 100).toFixed(1) + '% -> ' + (q12 * 100).toFixed(1) + '%');
+
+  const durata5 = makeGame(def, util, 5).game.state().ghostTime;
+  const durata12 = makeGame(def, util, 12).game.state().ghostTime;
+  check('anche le sparizioni durano meno all\'inizio', durata5 < durata12,
+    durata5 + 's -> ' + durata12 + 's');
+
   /* Effetto turbo: con un giocatore che tiene la pallina in gioco, prima o poi
      cade un mattone turbo e la velocità supera quella del livello. */
   const g5 = makeGame(def, util, 5);
@@ -81,9 +103,9 @@ console.log('\n[mattoni: tipi di mattone]');
   const g9 = makeGame(def, util, 9);
   const overCap = runUntil(g9.game, () => {
     const s = g9.game.state();
-    return s.speed > s.baseSpeed * 2 + 5;
+    return s.speed > s.baseSpeed * 1.75;
   }, 120, follow(g9.input, g9.game, 'ball'));
-  check('la velocità resta sotto il tetto (2× quella del livello)', !overCap);
+  check('la velocità resta sotto il tetto del livello', !overCap);
 
   // Malus: il punteggio cala quando la pallina torna sulla racchetta.
   const gm = makeGame(def, util, 1);
@@ -144,28 +166,34 @@ console.log('\n[mattoni: tipi di mattone]');
 console.log('\n[mattoni: pallina a intermittenza]');
 {
   const def = defs.mattoni;
-  const g = makeGame(def, util, 8);   // quota fantasma alta abbastanza da beccarne uno
+  /* I fantasma sono rari per scelta: per osservarne l'effetto si gioca al
+     livello 12, dove la quota è più alta, e si riprova su più partite invece
+     di sperare che il primo muro ne contenga uno a tiro. */
   let ghostSeen = 0, sparita = false, riapparsa = false, ghostAtStart = 0;
-
-  runUntil(g.game, () => {
-    const s = g.game.state();
-    if (s.ghost > 0) {
-      if (!ghostSeen) ghostAtStart = s.ghost;
-      ghostSeen = Math.max(ghostSeen, s.ghost);
-      if (!s.ballVisible) sparita = true;
-      if (sparita && s.ballVisible) riapparsa = true;
-    }
-    return sparita && riapparsa;
-  }, 180, follow(g.input, g.game, 'ball'));
-
+  let g = null, durataLivello = 0;
+  for (let tentativo = 0; tentativo < 5 && !(sparita && riapparsa); tentativo++) {
+    g = makeGame(def, util, 12);
+    durataLivello = g.game.state().ghostTime;
+    runUntil(g.game, () => {
+      const s = g.game.state();
+      if (s.ghost > 0) {
+        if (!ghostSeen) ghostAtStart = s.ghost;
+        ghostSeen = Math.max(ghostSeen, s.ghost);
+        if (!s.ballVisible) sparita = true;
+        if (sparita && s.ballVisible) riapparsa = true;
+      }
+      return sparita && riapparsa;
+    }, 150, follow(g.input, g.game, 'ball'));
+  }
   check('rompere un fantasma avvia l\'effetto', ghostSeen > 0,
     'partito da ' + ghostAtStart.toFixed(1) + 's, picco ' + ghostSeen.toFixed(1) + 's');
   check('la pallina sparisce e riappare (intermittenza)', sparita && riapparsa);
-  check('l\'effetto dura circa dieci secondi', ghostSeen >= 9 && ghostSeen <= 14.1,
-    ghostSeen.toFixed(1) + 's');
+  check('l\'effetto dura quanto dichiarato dal livello',
+    ghostSeen >= durataLivello * 0.9 && ghostSeen <= durataLivello * 1.45,
+    ghostSeen.toFixed(1) + 's su ' + durataLivello + 's dichiarati');
 
   // e deve finire: un effetto che non scade sarebbe una partita al buio
-  const g2 = makeGame(def, util, 8);
+  const g2 = makeGame(def, util, 12);
   let visto = false;
   const scaduto = runUntil(g2.game, () => {
     const s = g2.game.state();

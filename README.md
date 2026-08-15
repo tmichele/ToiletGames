@@ -37,7 +37,9 @@ racchetta vale di più (fino a ×5), mentre ogni tocco di racchetta toglie punti
 azzera il moltiplicatore. Il muro poi non è tutto uguale: i mattoni **turbo**
 (»») accelerano la pallina per il resto del livello, gli **impazziti** (?) la
 rimandano a un angolo qualsiasi, i **fantasma** (◌) la fanno sparire a
-intermittenza per dieci secondi, i **corazzati** reggono due colpi. Valgono metà
+intermittenza, i **corazzati** reggono due colpi. I fantasma entrano in punta di
+piedi dal 5° livello — il 2,5% del muro, sparizioni da 5 secondi — e crescono
+piano: sommati alla velocità sono l'effetto più duro del gioco. Valgono metà
 punti in più, ma decidono che partita sarà: la velocità con cui ti ritrovi a
 giocare dipende da quali mattoni hai scelto di rompere. **Pong** e **Mattoni** si giocano solo con i due tasti
 sotto il campo, che si dividono tutta la larghezza disponibile; in **Air Hockey**
@@ -150,8 +152,8 @@ Stato attuale (percentuale di livelli vinti dal profilo indicato):
 | Pong CPU · fermo | 3% | 3% | 0% | 0% | 0% |
 | Pong CPU · medio | 80% | 53% | 18% | 8% | 5% |
 | Pong CPU · bravo | 98% | 98% | 88% | 78% | 40% |
-| Mattoni · medio | 95% | 23% | 3% | 0% | 0% |
-| Mattoni · bravo | 100% | 100% | 95% | 35% | 0% |
+| Mattoni · medio | 95% | 25% | 0% | 0% | 0% |
+| Mattoni · bravo | 100% | 100% | 100% | 20% | 0% |
 | Air Hockey · medio | 68% | 18% | 3% | 0% | 0% |
 | Air Hockey · bravo | 98% | 85% | 25% | 0% | 0% |
 | Talpe · medio | 100% | 88% | 35% | 13% | 0% |
