@@ -14,10 +14,19 @@ var LIVES = 3;
 function config(level) {
   return {
     level: level,
-    upTime: Math.max(0.5, 1.7 - level * 0.09),        // s in cui la talpa resta fuori
+    /* Quanto resta fuori la talpa: è la leva principale della difficoltà e cala
+       in fretta, da un secondo e mezzo abbondante a poco più di un terzo. */
+    upTime: Math.max(0.38, 1.6 - level * 0.13),       // s in cui la talpa resta fuori
     spawnEvery: Math.max(0.35, 1.25 - level * 0.06),  // s fra due uscite
     maxUp: Math.min(1 + Math.floor(level / 2), 5),    // talpe contemporanee
+    /* Anche l'uscita si accorcia: ai primi livelli la talpa spunta con calma,
+       agli ultimi è già fuori prima che tu l'abbia messa a fuoco. */
+    salita: Math.max(0.04, 0.18 - level * 0.015),
     bombChance: level >= 3 ? Math.min(0.10 + (level - 3) * 0.03, 0.35) : 0,
+    /* Ogni tanto i due grigi sono scambiati: se il colore fosse sempre lo
+       stesso diventerebbe una scorciatoia, e basterebbe imparare la tinta
+       invece di guardare la miccia. */
+    invertiChance: level >= 3 ? Math.min(0.12 + (level - 3) * 0.04, 0.45) : 0,
     target: 8 + level * 2,                            // talpe da prendere
     levelTime: Math.max(20, 42 - level),              // s a disposizione
     points: 10 * level,
@@ -43,8 +52,8 @@ TG.registry.register({
   levelInfo: function (level) {
     var c = config(level);
     return 'Livello ' + level + ': ' + c.target + ' talpe in ' + c.levelTime + 's, ' +
-      'restano fuori ' + c.upTime.toFixed(1) + 's' +
-      (c.bombChance ? ', bombe' : '');
+      'restano fuori ' + c.upTime.toFixed(2) + 's' +
+      (c.bombChance ? ', bombe e colori scambiati' : '');
   },
 
   create: function (api) {
@@ -91,6 +100,7 @@ TG.registry.register({
       var i = api.util.pick(free);
       holes[i].occupante = {
         tipo: Math.random() < cfg.bombChance ? 'bomba' : 'talpa',
+        invertito: Math.random() < cfg.invertiChance,
         vita: cfg.upTime,
         eta: 0
       };
@@ -195,12 +205,17 @@ TG.registry.register({
     /* ---------- disegno ---------- */
 
     function drawTalpa(ctx, c, o, raggio) {
-      // quanto è uscita: sale in fretta e rientra in fretta
-      var quota = Math.min(1, o.eta / 0.12, o.vita / 0.12);
+      // quanto è uscita: la salita (e il rientro) accelerano con il livello
+      var quota = Math.min(1, o.eta / cfg.salita, o.vita / cfg.salita);
       var r = raggio * (0.55 + 0.45 * quota);
       var y = c.y - r * 0.25 * quota;
 
-      ctx.fillStyle = o.tipo === 'bomba' ? '#334155' : '#a16207';
+      /* Talpe e bombe hanno quasi lo stesso grigio, e ogni tanto se lo
+         scambiano: a distinguerle è la miccia, non il colore. */
+      var grigioBomba = '#4b5563', grigioTalpa = '#6b7280';
+      var suo = o.tipo === 'bomba' ? grigioBomba : grigioTalpa;
+      var altro = o.tipo === 'bomba' ? grigioTalpa : grigioBomba;
+      ctx.fillStyle = o.invertito ? altro : suo;
       ctx.beginPath();
       ctx.arc(c.x, y, r, Math.PI, 0);
       ctx.lineTo(c.x + r, y + r * 0.35);
@@ -225,7 +240,7 @@ TG.registry.register({
         ctx.arc(c.x - r * 0.32, y - r * 0.3, r * 0.11, 0, Math.PI * 2);
         ctx.arc(c.x + r * 0.32, y - r * 0.3, r * 0.11, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = '#fda4af';             // muso
+        ctx.fillStyle = '#9ca3af';             // muso, appena più chiaro del corpo
         ctx.beginPath();
         ctx.arc(c.x, y - r * 0.05, r * 0.18, 0, Math.PI * 2);
         ctx.fill();
@@ -298,6 +313,7 @@ TG.registry.register({
           return {
             i: i, x: Math.round(c.x), y: Math.round(c.y),
             tipo: h.occupante ? h.occupante.tipo : null,
+            invertito: h.occupante ? !!h.occupante.invertito : false,
             vita: h.occupante ? Math.round(h.occupante.vita * 100) / 100 : 0,
             eta: h.occupante ? Math.round(h.occupante.eta * 100) / 100 : 0
           };

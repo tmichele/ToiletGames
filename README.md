@@ -13,8 +13,9 @@ da `file://`) e giochi.
 | 🧠 **Memoria** | Ripeti la sequenza luminosa | Da 4 a 9 riquadri, sequenze più lunghe, riproduzione più rapida, tempo limite per tocco |
 | 🧱 **Mattoni** | Breakout con combo e mattoni speciali | Più file, mattoni turbo dal 2° livello, impazziti dal 3°, corazzati dal 5°; le vite valgono per tutta la partita |
 | 🏒 **Air Hockey** | Tavolo ad aria contro la CPU | Il portiere avversario copre meglio la porta, rientra più in fretta dopo il tiro, la sua porta si restringe |
-| 🐹 **Talpe** | Whack a mole a tempo | Talpe più rapide e più numerose, bombe dal 3° livello, obiettivo più alto e meno tempo |
+| 🐹 **Talpe** | Whack a mole a tempo | Restano fuori sempre meno (1,5s al 1° livello, 0,4s al 9°) e sono più numerose; bombe dal 3°, grigie come le talpe e col grigio ogni tanto scambiato: conta solo la miccia |
 | 🔴 **Forza 4** | Quattro di fila, vs CPU o in due | La CPU guarda sempre più mosse avanti (minimax) e smette di svarionare |
+| 🔢 **Tessere** | Rompicapo scorrevole (il «quindici») | Griglia da 3×3 a 5×5, mescolamento più profondo, meno tempo |
 
 **Forza 4** è l'unico a due modalità: si sceglie a inizio partita fra sfida alla
 CPU e due giocatori sullo stesso dispositivo, a mosse alternate. In due, il
@@ -134,18 +135,25 @@ Stato attuale (percentuale di livelli vinti dal profilo indicato):
 | Mattoni · bravo | 100% | 100% | 95% | 35% | 0% |
 | Air Hockey · medio | 68% | 18% | 3% | 0% | 0% |
 | Air Hockey · bravo | 98% | 85% | 25% | 0% | 0% |
-| Talpe · medio | 100% | 78% | 48% | 10% | 0% |
-| Talpe · bravo | 100% | 80% | 33% | 13% | 0% |
+| Talpe · medio | 100% | 88% | 35% | 13% | 0% |
+| Talpe · bravo | 100% | 83% | 33% | 8% | 3% |
 
-**Forza 4** non compare qui: è a turni, quindi i profili basati su riflessi non
-dicono niente. La sua difficoltà è misurata in `test/regole.js` facendo giocare
-la CPU contro un avversario che guarda una mossa sola. Contro un giocatore
-«ragionevole» (chiude se può, para se deve, altrimenti sta al centro) la CPU
-perde il 63% delle mani al livello 1, ne vince il 77% al 5° e il 90% al 9°.
+**Forza 4** e **Tessere** non compaiono qui: sono giochi di turni e di
+ragionamento, dove profili basati su riflessi non direbbero niente. Le loro
+regole stanno in `test/regole.js`. Per Forza 4, contro un giocatore
+«ragionevole» simulato (chiude se può, para se deve, altrimenti sta al centro) la
+CPU perde il 63% delle mani al livello 1 e ne vince il 90% al 9°. Per Tessere il
+test risolve davvero il rompicapo con una ricerca in ampiezza, così la vittoria è
+verificata invece che data per buona, e controlla che ogni mescolamento sia
+risolvibile: mescolare piazzando le tessere a caso renderebbe impossibile una
+partita su due, senza che il giocatore possa accorgersene.
 
 Il bot simulato insegue la palla senza anticiparla e, nell'hockey, difende la
 porta molto peggio di una persona: i numeri servono a confrontare i livelli fra
-loro, non a promettere un risultato.
+loro, non a promettere un risultato. Dove il gioco nasconde qualcosa all'occhio
+— la pallina invisibile dei mattoni fantasma, le bombe grigie come le talpe — il
+bot legge lo stato e vedrebbe tutto, quindi la difficoltà gli viene simulata a
+mano: quelle righe sono stime, non misure.
 
 ## Scelte tecniche
 

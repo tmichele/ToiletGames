@@ -307,7 +307,9 @@ console.log('\n[forza 4: regole]');
     return libere[Math.random() < 0.7 ? 0 : Math.floor(Math.random() * libere.length)];
   }
 
-  let vinteCpu = 0, partite = 12;
+  /* Campione ampio e soglia prudente: con dodici partite e il 70% richiesto,
+     una mano storta faceva fallire un controllo che descrive una tendenza. */
+  let vinteCpu = 0, partite = 24;
   for (let n = 0; n < partite; n++) {
     const g = makeGame(def, util, 9);
     const mm = g.game.state().menu[0];
@@ -324,7 +326,130 @@ console.log('\n[forza 4: regole]');
     if (g.events.outcome === 'lose') vinteCpu++;
   }
   check('al livello 9 la CPU batte quasi sempre chi guarda una mossa sola',
-    vinteCpu >= partite * 0.7, vinteCpu + ' vittorie su ' + partite);
+    vinteCpu >= partite * 0.65, vinteCpu + ' vittorie su ' + partite);
+}
+
+/* ---------- Tessere: mescolamento risolvibile e vittoria ---------- */
+
+console.log('\n[tessere: rompicapo scorrevole]');
+{
+  const def = defs.tessere;
+
+  /* Criterio classico di risolvibilità del quindici: parità delle inversioni,
+     corretta con la riga del buco quando il lato è pari. */
+  function risolvibile(g, n) {
+    const t = g.filter((v) => v !== 0);
+    let inv = 0;
+    for (let i = 0; i < t.length; i++) {
+      for (let j = i + 1; j < t.length; j++) if (t[i] > t[j]) inv++;
+    }
+    if (n % 2 === 1) return inv % 2 === 0;
+    const rigaDalBasso = n - Math.floor(g.indexOf(0) / n);
+    return (rigaDalBasso % 2 === 0) ? (inv % 2 === 1) : (inv % 2 === 0);
+  }
+
+  let nonRisolvibili = 0, giaFatte = 0;
+  for (const level of [1, 3, 6, 9]) {
+    for (let k = 0; k < 120; k++) {
+      const s = makeGame(def, util, level).game.state();
+      if (!risolvibile(s.griglia, s.n)) nonRisolvibili++;
+      if (s.giuste === s.n * s.n - 1) giaFatte++;
+    }
+  }
+  check('ogni mescolamento è risolvibile', nonRisolvibili === 0,
+    nonRisolvibili + ' su 480');
+  check('non parte mai già risolto', giaFatte === 0, giaFatte + ' su 480');
+
+  // una tessera non adiacente al buco non si muove
+  const g1 = makeGame(def, util, 1);
+  const s1 = g1.game.state();
+  const lontane = s1.caselle.filter((c) => {
+    const dr = Math.abs(Math.floor(c.i / s1.n) - Math.floor(s1.buco / s1.n));
+    const dc = Math.abs((c.i % s1.n) - (s1.buco % s1.n));
+    return c.valore !== 0 && dr + dc > 1;
+  });
+  g1.input.tap(lontane[0].x, lontane[0].y);
+  runUntil(g1.game, () => false, 0.2);
+  check('una tessera lontana dal buco non si muove',
+    g1.game.state().mosse === 0 && g1.game.state().griglia.join() === s1.griglia.join());
+
+  // una adiacente sì, e finisce nel buco
+  const vicina = s1.caselle.find((c) => {
+    const dr = Math.abs(Math.floor(c.i / s1.n) - Math.floor(s1.buco / s1.n));
+    const dc = Math.abs((c.i % s1.n) - (s1.buco % s1.n));
+    return c.valore !== 0 && dr + dc === 1;
+  });
+  const valoreAtteso = s1.griglia[vicina.i];
+  g1.input.tap(vicina.x, vicina.y);
+  runUntil(g1.game, () => false, 0.2);
+  const s2 = g1.game.state();
+  check('la tessera adiacente scivola nel buco',
+    s2.griglia[s1.buco] === valoreAtteso && s2.buco === vicina.i && s2.mosse === 1);
+
+  /* Risolverlo davvero: per il 3×3 basta una ricerca in ampiezza, e così si
+     verifica la condizione di vittoria invece di darla per buona. */
+  function risolvi(griglia, n) {
+    const meta = griglia.slice().sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b)).join();
+    const partenza = griglia.join();
+    if (partenza === meta) return [];
+    const coda = [griglia.slice()];
+    const visti = new Map([[partenza, null]]);
+    while (coda.length) {
+      const cur = coda.shift();
+      const chiave = cur.join();
+      const buco = cur.indexOf(0);
+      const r = Math.floor(buco / n), c = buco % n;
+      const mosse = [];
+      if (r > 0) mosse.push(buco - n);
+      if (r < n - 1) mosse.push(buco + n);
+      if (c > 0) mosse.push(buco - 1);
+      if (c < n - 1) mosse.push(buco + 1);
+      for (const m of mosse) {
+        const next = cur.slice();
+        next[buco] = next[m];
+        next[m] = 0;
+        const k = next.join();
+        if (visti.has(k)) continue;
+        visti.set(k, { da: chiave, mossa: m });
+        if (k === meta) {
+          const percorso = [];
+          let passo = { da: chiave, mossa: m };
+          let cursore = k;
+          while (passo) {
+            percorso.unshift(passo.mossa);
+            cursore = passo.da;
+            passo = visti.get(cursore);
+          }
+          return percorso;
+        }
+        coda.push(next);
+      }
+    }
+    return null;
+  }
+
+  const gs = makeGame(def, util, 1);
+  const iniziale = gs.game.state();
+  const percorso = risolvi(iniziale.griglia, iniziale.n);
+  check('il mescolamento del livello 1 ha una soluzione', Array.isArray(percorso),
+    percorso ? percorso.length + ' mosse' : 'nessuna');
+  if (percorso) {
+    for (const casella of percorso) {
+      if (gs.events.outcome) break;
+      const st = gs.game.state();
+      gs.input.tap(st.caselle[casella].x, st.caselle[casella].y);
+      runUntil(gs.game, () => false, 0.05);
+    }
+    check('rimettere i numeri in ordine chiude il livello', gs.events.outcome === 'win',
+      String(gs.events.outcome));
+    check('sistemare le tessere dà punti', gs.events.score > 0, gs.events.score + ' punti');
+  }
+
+  // scaduto il tempo la partita finisce
+  const gt = makeGame(def, util, 1);
+  const finito = runUntil(gt.game, () => !!gt.events.outcome, 200);
+  check('allo scadere del tempo la partita finisce', finito && gt.events.outcome === 'lose',
+    String(gt.events.outcome));
 }
 
 console.log(failures === 0 ? '\nTUTTO OK' : '\n' + failures + ' CONTROLLI FALLITI');

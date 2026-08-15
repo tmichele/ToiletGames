@@ -120,12 +120,17 @@ const BOTS = {
     };
   },
 
-  /* Le talpe si giocano a tocchi: il bot ne dà uno ogni tanto (la sua "mano"),
-     vede solo le talpe fuori da abbastanza tempo (la sua reazione) e ogni tanto
-     sbaglia buca o prende una bomba (il suo errore). */
+  /* Le talpe si giocano a tocchi: il bot ne dà uno ogni tanto (la sua "mano") e
+     vede solo quelle fuori da abbastanza tempo (la sua reazione).
+
+     Talpe e bombe sono grigie uguali, distinguibili solo dalla miccia: il bot
+     legge lo stato e le distinguerebbe sempre, quindi la confusione va simulata
+     a mano. È una stima, non una misura: serve solo perché i numeri non
+     descrivano un gioco più facile di quello vero. */
   talpe: (profile) => (api, game) => {
     const tapEvery = 0.55 - profile.speed / 1600;
-    const sbaglia = profile.error / 200;
+    const sbagliaBuca = profile.error / 200;
+    const confondeBomba = profile.error / 120;
     let attesa = 0;
     return function (s, dt) {
       attesa -= dt;
@@ -133,13 +138,17 @@ const BOTS = {
       const viste = s.buche.filter((b) => b.tipo && b.eta >= profile.reaction);
       if (!viste.length) return;
       const talpe = viste.filter((b) => b.tipo === 'talpa');
+      const bombe = viste.filter((b) => b.tipo === 'bomba');
       let scelta;
-      if (Math.random() < sbaglia) {
-        scelta = viste[Math.floor(Math.random() * viste.length)];   // anche una bomba
+      if (Math.random() < sbagliaBuca) {
+        scelta = viste[Math.floor(Math.random() * viste.length)];    // buca sbagliata
+      } else if (bombe.length &&
+                 Math.random() < confondeBomba * (bombe[0].invertito ? 2 : 1)) {
+        scelta = bombe[0];               // scambiata per talpa: più facile se invertita
       } else if (talpe.length) {
         scelta = talpe[0];
       } else {
-        return;                                                    // solo bombe: si aspetta
+        return;                                                      // solo bombe: aspetta
       }
       api.input.tap(scelta.x, scelta.y);
       attesa = tapEvery;

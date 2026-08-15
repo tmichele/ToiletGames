@@ -31,7 +31,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   console.log('\n[home]');
   const cards = await page.$$('.card');
-  check('7 giochi in elenco', cards.length === 7, cards.length + ' trovati');
+  check('8 giochi in elenco', cards.length === 8, cards.length + ' trovati');
   check('titoli presenti', (await page.textContent('#game-grid')).includes('Serpente'));
 
   const canvasHash = () => page.evaluate(() => {
@@ -321,6 +321,30 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   check('il gettone scende e la CPU risponde', gettoni >= 2, gettoni + ' gettoni sulla griglia');
   check('la CPU gioca con il giallo',
     dopoMossa.board.flat().filter(v => v === 2).length >= 1);
+
+  // ---- Tessere: il tocco fa scorrere la tessera adiacente ----
+  console.log('\n[tessere]');
+  await page.goto(URL + '#/g/tessere');
+  await sleep(400);
+  await page.click('.btn:has-text("Gioca")');
+  await sleep(300);
+  const st0 = await page.evaluate(() => TG.engine.inspect().game);
+  check('il rompicapo parte mescolato', st0.giuste < st0.n * st0.n - 1,
+    st0.giuste + ' tessere a posto su ' + (st0.n * st0.n - 1));
+  const sbox = await page.$eval('#canvas', el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+  const adiacente = st0.caselle.find(c => {
+    const dr = Math.abs(Math.floor(c.i / st0.n) - Math.floor(st0.buco / st0.n));
+    const dc = Math.abs((c.i % st0.n) - (st0.buco % st0.n));
+    return c.valore !== 0 && dr + dc === 1;
+  });
+  await page.mouse.click(sbox.x + adiacente.x / 360 * sbox.w, sbox.y + adiacente.y / 430 * sbox.h);
+  await sleep(300);
+  const st1 = await page.evaluate(() => TG.engine.inspect().game);
+  check('il tocco fa scorrere la tessera', st1.mosse === 1 && st1.buco === adiacente.i);
+  await page.keyboard.press('ArrowUp');
+  await sleep(200);
+  const st2 = await page.evaluate(() => TG.engine.inspect().game);
+  check('anche le frecce muovono le tessere', st2.mosse >= 1, st2.mosse + ' mosse');
 
   // ---- persistenza + deep link ----
   console.log('\n[persistenza]');
