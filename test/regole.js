@@ -452,5 +452,118 @@ console.log('\n[tessere: rompicapo scorrevole]');
     String(gt.events.outcome));
 }
 
+/* ---------- Labirinto: percorribilità, muri, bussola, uscita ---------- */
+
+console.log('\n[labirinto: senza mappa]');
+{
+  const def = defs.labirinto;
+
+  function bfs(s) {
+    const n = s.lato, m = s.mappa;
+    const k = (x, y) => y * n + x;
+    const start = s.giocatore.cella;
+    const coda = [[start[0], start[1]]];
+    const da = new Map([[k(start[0], start[1]), null]]);
+    while (coda.length) {
+      const [x, y] = coda.shift();
+      if (x === s.uscita[0] && y === s.uscita[1]) {
+        const percorso = [];
+        let cur = k(x, y), pos = [x, y];
+        while (cur !== null && da.get(cur) !== null) {
+          percorso.unshift(pos);
+          pos = da.get(cur);
+          cur = k(pos[0], pos[1]);
+        }
+        return percorso;
+      }
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= n || ny >= n) continue;
+        if (m[k(nx, ny)] === 1 || da.has(k(nx, ny))) continue;
+        da.set(k(nx, ny), [x, y]);
+        coda.push([nx, ny]);
+      }
+    }
+    return null;
+  }
+
+  let senzaUscita = 0, prove = 0;
+  for (const level of [1, 3, 6, 10]) {
+    for (let i = 0; i < 60; i++) {
+      prove++;
+      if (!bfs(makeGame(def, util, level).game.state())) senzaUscita++;
+    }
+  }
+  check('ogni labirinto ha una strada per l\'uscita', senzaUscita === 0,
+    senzaUscita + ' senza uscita su ' + prove);
+
+  // i muri fermano: si spinge avanti contro una parete e non si passa
+  const gm = makeGame(def, util, 1);
+  gm.input.held.up = true;
+  // prima si punta il muro alle spalle del punto di partenza
+  gm.input.held.left = true;
+  runUntil(gm.game, () => false, 1.5);
+  gm.input.held.left = false;
+  const prima = gm.game.state().giocatore;
+  runUntil(gm.game, () => false, 2);
+  const dopo = gm.game.state().giocatore;
+  const spostamento = Math.hypot(dopo.x - prima.x, dopo.y - prima.y);
+  check('dentro il labirinto non si attraversano i muri',
+    dopo.x > 0.5 && dopo.y > 0.5 && dopo.x < gm.game.state().lato - 0.5,
+    'posizione ' + dopo.x + ',' + dopo.y + ' (spostamento ' + spostamento.toFixed(2) + ')');
+
+  // bussola: puntando il giocatore verso l'uscita l'ago va a zero
+  const gb = makeGame(def, util, 2);
+  const sb = gb.game.state();
+  const angoloGiusto = Math.atan2(sb.uscita[1] + 0.5 - sb.giocatore.y,
+                                  sb.uscita[0] + 0.5 - sb.giocatore.x);
+  gb.input.held.right = true;
+  const puntata = runUntil(gb.game, () => {
+    const b = gb.game.state().bussola;
+    return Math.abs(Math.atan2(Math.sin(b), Math.cos(b))) < 0.12;
+  }, 8);
+  gb.input.held.right = false;
+  check('la bussola azzera quando guardi verso l\'uscita', puntata,
+    'angolo verso l\'uscita ' + angoloGiusto.toFixed(2));
+
+  /* Pilota automatico: segue il percorso trovato dal BFS girandosi e andando
+     avanti, come farebbe una persona che sa dove andare. Serve a verificare che
+     l'uscita si raggiunga davvero e che il tempo concesso basti. */
+  function risolviConPilota(level) {
+    const g = makeGame(def, util, level);
+    const percorso = bfs(g.game.state());
+    if (!percorso) return null;
+    let i = 0;
+    runUntil(g.game, () => !!g.events.outcome, 400, () => {
+      const s = g.game.state();
+      const meta = percorso[Math.min(i, percorso.length - 1)];
+      const bersaglio = { x: meta[0] + 0.5, y: meta[1] + 0.5 };
+      const dx = bersaglio.x - s.giocatore.x, dy = bersaglio.y - s.giocatore.y;
+      if (Math.hypot(dx, dy) < 0.25) { i++; return; }
+      let diff = Math.atan2(dy, dx) - s.giocatore.ang;
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+      g.input.held.left = diff < -0.12;
+      g.input.held.right = diff > 0.12;
+      g.input.held.up = Math.abs(diff) < 0.5;
+    });
+    return { esito: g.events.outcome, tempo: g.game.state().timeLeft, punti: g.events.score };
+  }
+
+  const r1 = risolviConPilota(1);
+  check('seguendo il percorso si arriva all\'uscita', r1 && r1.esito === 'win',
+    r1 ? r1.esito + ', ' + r1.tempo.toFixed(0) + 's avanzati' : 'nessun percorso');
+  check('esplorare dà punti', r1 && r1.punti > 0, r1 ? r1.punti + ' punti' : '');
+
+  const r8 = risolviConPilota(8);
+  check('il tempo basta anche al livello 8 se non ti perdi', r8 && r8.esito === 'win',
+    r8 ? r8.esito + ', ' + r8.tempo.toFixed(0) + 's avanzati' : 'nessun percorso');
+
+  // restando fermi il tempo scade
+  const gf = makeGame(def, util, 1);
+  const scaduto = runUntil(gf.game, () => !!gf.events.outcome, 200);
+  check('restando fermi il tempo scade', scaduto && gf.events.outcome === 'lose',
+    String(gf.events.outcome));
+}
+
 console.log(failures === 0 ? '\nTUTTO OK' : '\n' + failures + ' CONTROLLI FALLITI');
 process.exit(failures === 0 ? 0 : 1);

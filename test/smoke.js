@@ -31,7 +31,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   console.log('\n[home]');
   const cards = await page.$$('.card');
-  check('8 giochi in elenco', cards.length === 8, cards.length + ' trovati');
+  check('9 giochi in elenco', cards.length === 9, cards.length + ' trovati');
   check('titoli presenti', (await page.textContent('#game-grid')).includes('Serpente'));
 
   const canvasHash = () => page.evaluate(() => {
@@ -345,6 +345,41 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   await sleep(200);
   const st2 = await page.evaluate(() => TG.engine.inspect().game);
   check('anche le frecce muovono le tessere', st2.mosse >= 1, st2.mosse + ' mosse');
+
+  // ---- Labirinto: joystick, movimento, pausa ----
+  console.log('\n[labirinto]');
+  await page.goto(URL + '#/g/labirinto');
+  await sleep(400);
+  await page.click('.btn:has-text("Gioca")');
+  await sleep(400);
+  check('il labirinto ha la leva analogica', (await page.$$('#touch-controls .stick')).length === 1);
+  const lab0 = await page.evaluate(() => TG.engine.inspect().game);
+  check('si parte lontano dall\'uscita', lab0.distanza > 3, 'distanza ' + lab0.distanza);
+
+  const bb = await (await page.$('.stick')).boundingBox();
+  await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height * 0.12, { steps: 4 });
+  await sleep(800);
+  await page.mouse.up();
+  const lab1 = await page.evaluate(() => TG.engine.inspect().game);
+  const spostato = Math.hypot(lab1.giocatore.x - lab0.giocatore.x, lab1.giocatore.y - lab0.giocatore.y);
+  check('la leva muove il giocatore', spostato > 0.3, 'spostamento ' + spostato.toFixed(2));
+  check('la leva torna a zero quando la lasci',
+    (await page.evaluate(() => TG.input.stick.x === 0 && TG.input.stick.y === 0)));
+
+  // la pausa ferma davvero il gioco
+  await page.click('#btn-pause');
+  await sleep(150);
+  check('il labirinto si mette in pausa', await page.isVisible('#overlay'));
+  const inPausa = await page.evaluate(() => TG.engine.inspect().game.timeLeft);
+  await sleep(1200);
+  check('in pausa il tempo non scorre',
+    (await page.evaluate(() => TG.engine.inspect().game.timeLeft)) === inPausa);
+  await page.click('.btn:has-text("Riprendi")');
+  await sleep(1000);
+  check('riprendendo il tempo riparte',
+    (await page.evaluate(() => TG.engine.inspect().game.timeLeft)) < inPausa);
 
   // ---- persistenza + deep link ----
   console.log('\n[persistenza]');

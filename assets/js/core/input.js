@@ -17,6 +17,8 @@ TG.input = (function () {
   var tapQueue = [];  // tap con coordinate logiche, per i giochi "a bersaglio"
   var digitQueue = []; // tasti 1-9, alternativa da tastiera ai tap
   var pointer = { x: 0, y: 0, down: false, inside: false, moved: false };
+  /* Leva analogica: -1..1 su entrambi gli assi, 0 quando nessuno la tocca. */
+  var stick = { x: 0, y: 0, attiva: false };
 
   var stageEl = null, canvasEl = null, controlsEl = null;
   var viewport = { w: 360, h: 480 };
@@ -129,6 +131,13 @@ TG.input = (function () {
     if (kind === 'none' || kind === 'pointer') { controlsEl.hidden = true; return; }
     controlsEl.hidden = false;
 
+    // leva analogica per i giochi in cui si naviga, non si scatta
+    if (kind === 'joystick') {
+      controlsEl.classList.add('touch-controls--stick');
+      controlsEl.appendChild(costruisciLeva());
+      return;
+    }
+
     // due tasti che si dividono tutta la larghezza disponibile
     if (kind === 'lr-big') {
       controlsEl.classList.add('touch-controls--big');
@@ -173,6 +182,62 @@ TG.input = (function () {
     }
   }
 
+  /* La leva vive nell'area dei comandi: si trascina il pomello dal centro,
+     e il vettore risultante è quello che legge il gioco. */
+  function costruisciLeva() {
+    var base = document.createElement('div');
+    base.className = 'stick';
+    var knob = document.createElement('div');
+    knob.className = 'stick__knob';
+    base.appendChild(knob);
+
+    var attivo = null;
+
+    function aggiorna(e) {
+      var r = base.getBoundingClientRect();
+      var raggio = r.width / 2;
+      var dx = (e.clientX - (r.left + raggio)) / raggio;
+      var dy = (e.clientY - (r.top + raggio)) / raggio;
+      var lung = Math.hypot(dx, dy);
+      if (lung > 1) { dx /= lung; dy /= lung; }
+      stick.x = dx;
+      stick.y = dy;
+      stick.attiva = true;
+      knob.style.transform = 'translate(' + (dx * raggio * 0.55) + 'px,' +
+        (dy * raggio * 0.55) + 'px)';
+    }
+
+    function rilascia() {
+      attivo = null;
+      stick.x = 0; stick.y = 0; stick.attiva = false;
+      knob.style.transform = '';
+    }
+
+    base.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      attivo = e.pointerId;
+      base.setPointerCapture && base.setPointerCapture(e.pointerId);
+      aggiorna(e);
+    });
+    base.addEventListener('pointermove', function (e) {
+      if (attivo !== e.pointerId) return;
+      e.preventDefault();
+      aggiorna(e);
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) {
+      base.addEventListener(ev, function (e) {
+        if (attivo !== e.pointerId) return;
+        e.preventDefault();
+        rilascia();
+      });
+    });
+
+    resetLeva = rilascia;
+    return base;
+  }
+
+  var resetLeva = null;
+
   function init(opts) {
     stageEl = opts.stage;
     canvasEl = opts.canvas;
@@ -190,6 +255,7 @@ TG.input = (function () {
   }
 
   function reset() {
+    if (resetLeva) resetLeva();
     down = {};
     queue.length = 0;
     tapQueue.length = 0;
@@ -208,6 +274,8 @@ TG.input = (function () {
     /* Coda degli input "premuti": ogni azione viene consumata una sola volta. */
     take: function () { return queue.length ? queue.shift() : null; },
     peekAll: function () { var q = queue.slice(); queue.length = 0; return q; },
+    /* Leva analogica: {x, y} fra -1 e 1, zero se nessuno la sta usando. */
+    stick: stick,
     /* Tap sul campo, con coordinate nel sistema del gioco: {x, y} oppure null. */
     takeTap: function () { return tapQueue.length ? tapQueue.shift() : null; },
     /* Tasti 1-9: alternativa da tastiera ai tap. */

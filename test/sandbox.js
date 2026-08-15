@@ -39,6 +39,7 @@ const SFX = new Proxy({}, { get: () => () => {} });
 function makeInput() {
   return {
     pointer: { x: 0, y: 0, down: false, inside: true, moved: true },
+    stick: { x: 0, y: 0, attiva: false },
     held: {},
     queue: [],
     taps: [],

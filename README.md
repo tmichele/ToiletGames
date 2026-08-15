@@ -16,6 +16,14 @@ da `file://`) e giochi.
 | 🐹 **Talpe** | Whack a mole a tempo | Restano fuori sempre meno (1,5s al 1° livello, 0,4s al 9°) e sono più numerose; bombe dal 3°, grigie come le talpe e col grigio ogni tanto scambiato: conta solo la miccia |
 | 🔴 **Forza 4** | Quattro di fila, vs CPU o in due | La CPU guarda sempre più mosse avanti (minimax) e smette di svarionare |
 | 🔢 **Tessere** | Rompicapo scorrevole (il «quindici») | Griglia da 3×3 a 5×5, mescolamento più profondo, meno tempo |
+| 🧭 **Labirinto** | Vista in prima persona, senza mappa | Labirinto più grande, meno alberi di riferimento, vista più corta, meno tempo |
+
+Il **Labirinto** si gioca in prima persona con il joystick e non mostra mai la
+pianta: per orientarsi ci sono la bussola (indica dove sta l'uscita, non come
+arrivarci), gli alberi che spuntano oltre i muri — fermi, e diversi uno
+dall'altro per tinta e sagoma — e i dettagli di pareti e pavimento, che in ogni
+punto sono sempre gli stessi. La scena è disegnata in raycasting sul canvas 2D,
+senza WebGL.
 
 **Forza 4** è l'unico a due modalità: si sceglie a inizio partita fra sfida alla
 CPU e due giocatori sullo stesso dispositivo, a mosse alternate. In due, il
@@ -75,7 +83,7 @@ assets/js/core/
   profile.js                nome del giocatore
   scores.js                 classifiche e statistiche per gioco
   registry.js               registro dei giochi + contratto
-  input.js                  tastiera, swipe, puntatore, pad a schermo
+  input.js                  tastiera, swipe, puntatore, pad e leva a schermo
   engine.js                 canvas, ciclo di gioco, livelli, punteggio
   ui.js                     elenco, HUD, classifica, pannelli
   app.js                    avvio e navigazione (#/g/<id>)
@@ -138,9 +146,11 @@ Stato attuale (percentuale di livelli vinti dal profilo indicato):
 | Talpe · medio | 100% | 88% | 35% | 13% | 0% |
 | Talpe · bravo | 100% | 83% | 33% | 8% | 3% |
 
-**Forza 4** e **Tessere** non compaiono qui: sono giochi di turni e di
-ragionamento, dove profili basati su riflessi non direbbero niente. Le loro
-regole stanno in `test/regole.js`. Per Forza 4, contro un giocatore
+**Forza 4**, **Tessere** e **Labirinto** non compaiono qui: sono giochi di
+turni, di ragionamento o di orientamento, dove profili basati su riflessi non
+direbbero niente. Le loro regole stanno in `test/regole.js`, dove un pilota
+automatico risolve davvero il labirinto seguendo il percorso più corto — così si
+verifica insieme che l'uscita sia raggiungibile e che il tempo concesso basti. Per Forza 4, contro un giocatore
 «ragionevole» simulato (chiude se può, para se deve, altrimenti sta al centro) la
 CPU perde il 63% delle mani al livello 1 e ne vince il 90% al 9°. Per Tessere il
 test risolve davvero il rompicapo con una ricerca in ampiezza, così la vittoria è

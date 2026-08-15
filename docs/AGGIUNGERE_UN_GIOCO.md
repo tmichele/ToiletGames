@@ -133,11 +133,13 @@ sbagliando:
 - `api.input.takeTap()` — tap con coordinate `{x, y}` nel sistema del viewport.
 - `api.input.takeDigit()` — tasti 1-9, alternativa da tastiera ai tap.
 - `api.input.pointer` — `{x, y, down}` per trascinamenti (racchette e simili).
+- `api.input.stick` — `{x, y, attiva}` fra -1 e 1: la leva analogica, per i
+  giochi in cui si naviga invece di scattare.
 
 I valori di `controls` decidono i comandi a schermo: `dpad` (croce direzionale),
 `lr` (sinistra/destra piccoli), `lr-big` (due tasti che si dividono tutta la
 larghezza, per i giochi dove serve un bersaglio grande per il pollice),
-`pointer` e `none` (nessun pulsante). Con `actionLabel` valorizzato si aggiunge
+`joystick` (leva analogica), `pointer` e `none` (nessun pulsante). Con `actionLabel` valorizzato si aggiunge
 il pulsante azione.
 
 ## Tarare la difficoltà
