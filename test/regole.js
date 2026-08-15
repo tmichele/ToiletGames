@@ -651,26 +651,29 @@ console.log('\n[labirinto: mappa che si dimentica]');
     memorie.map((m) => m.split('memoria della mappa ')[1]).join(' / '));
 }
 
-/* ---------- checkpoint: partire da un livello alto ---------- */
+/* ---------- ripartenza: partire da un livello qualsiasi ---------- */
 
-console.log('\n[checkpoint: partenza da livello alto]');
+console.log('\n[ripartenza: partenza da livello alto]');
 {
-  /* Con i checkpoint una partita può cominciare direttamente dal livello 10:
-     start(level) non può più dare per scontato di essere passato dai livelli
-     precedenti. Qui si controlla che ogni gioco regga l'avvio a freddo. */
+  /* Si riprende dal livello più alto raggiunto, quindi una partita può
+     cominciare da un livello qualsiasi: start(level) non può dare per scontato
+     di essere passato dai precedenti. I livelli provati non sono tondi apposta —
+     con la vecchia regola dei multipli di 5 il 7 non capitava mai. */
   const problemi = [];
-  Object.keys(defs).forEach((id) => {
-    try {
-      const g = makeGame(defs[id], util, 10);
-      for (let i = 0; i < 180; i++) g.game.update(DT);   // tre secondi
-      const s = g.game.state ? g.game.state() : null;
-      if (s && s.lives != null && s.lives <= 0) problemi.push(id + ': parte senza vite');
-      if (s && s.timeLeft != null && s.timeLeft <= 0) problemi.push(id + ': parte senza tempo');
-    } catch (e) {
-      problemi.push(id + ': ' + e.message);
-    }
+  [2, 3, 7, 10, 13].forEach((livello) => {
+    Object.keys(defs).forEach((id) => {
+      try {
+        const g = makeGame(defs[id], util, livello);
+        for (let i = 0; i < 180; i++) g.game.update(DT);   // tre secondi
+        const s = g.game.state ? g.game.state() : null;
+        if (s && s.lives != null && s.lives <= 0) problemi.push(id + ' L' + livello + ': parte senza vite');
+        if (s && s.timeLeft != null && s.timeLeft <= 0) problemi.push(id + ' L' + livello + ': parte senza tempo');
+      } catch (e) {
+        problemi.push(id + ' L' + livello + ': ' + e.message);
+      }
+    });
   });
-  check('tutti i giochi partono anche direttamente dal livello 10',
+  check('tutti i giochi partono da un livello qualsiasi, non solo dal primo',
     problemi.length === 0, problemi.join(' | '));
 
   // e dal livello 1 restano identici a prima

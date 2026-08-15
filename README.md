@@ -59,13 +59,13 @@ nome del giocatore) e una progressione a livelli: si parte dal livello 1 e si
 sale finché non si perde. Il punteggio non si azzera fra i livelli, così la
 classifica misura davvero quanto lontano sei arrivato.
 
-**Checkpoint ogni 5 livelli.** Arrivare al livello 5, 10, 15… mette un
-segnalibro 🚩 in quel gioco: dalla partita successiva puoi scegliere se
-ricominciare dal livello 1 o ripartire dall'ultimo checkpoint. È un modo per non
-rifare ogni volta i primi livelli, ma non è un pasto gratis — i punti dei livelli
-saltati non li prendi, e la classifica segna «da 5» accanto ai risultati partiti
-da un checkpoint, così i punteggi restano confrontabili. Il checkpoint si guadagna
-appena si mette piede nel livello, quindi resta anche se si perde subito dopo.
+**Si riprende sempre da dove sei arrivato.** Il livello più alto raggiunto in un
+gioco resta segnato 🚩: dalla partita successiva puoi scegliere se ricominciare
+dal livello 1 o ripartire da lì. È un modo per non rifare ogni volta i primi
+livelli, ma non è un pasto gratis — i punti dei livelli saltati non li prendi, e
+la classifica segna «da 7» accanto ai risultati partiti a metà strada, così i
+punteggi restano confrontabili. Il segnalibro si sposta appena si mette piede nel
+livello nuovo, quindi resta anche se si perde subito dopo.
 
 ## Uso
 

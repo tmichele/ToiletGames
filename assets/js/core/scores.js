@@ -4,7 +4,6 @@ TG.scores = (function () {
   'use strict';
 
   var MAX_ENTRIES = 10;
-  var CHECKPOINT_OGNI = 5;   // ogni quanti livelli si sblocca una ripartenza
 
   function boardKey(gameId) { return 'board:' + gameId; }
   function statsKey(gameId) { return 'stats:' + gameId; }
@@ -21,14 +20,15 @@ TG.scores = (function () {
       : { plays: 0, bestScore: 0, bestLevel: 0, lastPlayed: 0, checkpoint: 0 };
   }
 
-  /* Checkpoint: l'ultimo livello multiplo di CHECKPOINT_OGNI raggiunto, da cui
-     si potrà ripartire nelle partite successive. Si registra appena ci si
-     arriva, non a fine partita: è una conquista, e resta anche se poi si perde
-     subito dopo. */
+  /* Ripartenza: il livello più alto a cui si è arrivati in questo gioco, da cui
+     si può ricominciare nelle partite successive. Si registra appena ci si
+     arriva, non a fine partita, così resta anche se si perde subito dopo: chi
+     è arrivato al dodici non deve rifare undici livelli per tornarci.
+     (La chiave salvata si chiama ancora `checkpoint`: cambiarle nome
+     cancellerebbe i progressi già in localStorage.) */
   function checkpoint(gameId) { return stats(gameId).checkpoint || 0; }
 
   function setCheckpoint(gameId, level) {
-    if (level % CHECKPOINT_OGNI !== 0) return false;
     var s = stats(gameId);
     if (level <= (s.checkpoint || 0)) return false;
     s.checkpoint = level;
@@ -70,7 +70,7 @@ TG.scores = (function () {
     s.plays = (s.plays || 0) + 1;
     s.bestScore = Math.max(s.bestScore || 0, score);
     s.bestLevel = Math.max(s.bestLevel || 0, level);
-    s.checkpoint = Math.max(s.checkpoint || 0, level - (level % CHECKPOINT_OGNI));
+    s.checkpoint = Math.max(s.checkpoint || 0, level);
     s.lastPlayed = entry.date;
     TG.storage.set(statsKey(gameId), s);
 
@@ -94,7 +94,6 @@ TG.scores = (function () {
 
   return {
     MAX_ENTRIES: MAX_ENTRIES,
-    CHECKPOINT_OGNI: CHECKPOINT_OGNI,
     checkpoint: checkpoint,
     setCheckpoint: setCheckpoint,
     top: top,

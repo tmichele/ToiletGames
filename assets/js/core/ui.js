@@ -48,7 +48,7 @@ TG.ui = (function () {
     }
     var conCheckpoint = games.filter(function (g) { return TG.scores.checkpoint(g.id) > 1; });
     if (conCheckpoint.length) {
-      lines.push('<p class="stats-line">Checkpoint 🚩 sbloccati: <b>' +
+      lines.push('<p class="stats-line">Puoi riprendere 🚩 da: <b>' +
         conCheckpoint.map(function (g) {
           return TG.util.escapeHtml(g.title) + ' liv. ' + TG.scores.checkpoint(g.id);
         }).join('</b>, <b>') + '</b></p>');
@@ -73,10 +73,12 @@ TG.ui = (function () {
   }
 
   function setScore(v) { el.score.textContent = v; bump(el.score); }
-  /* Il livello multiplo di 5 è un checkpoint: si segna con la bandierina,
-     così mentre giochi sai di aver messo il segnalibro. */
+  /* Niente bandierina accanto al livello: da quando ogni livello è una
+     ripartenza comparirebbe sempre, e un segno sempre acceso non segnala
+     niente. Il livello da cui si può ripartire si legge dove serve davvero:
+     nel pannello di inizio partita e sulla card in home. */
   function setLevel(v) {
-    el.level.textContent = v + (v % TG.scores.CHECKPOINT_OGNI === 0 ? ' 🚩' : '');
+    el.level.textContent = v;
     bump(el.level);
   }
   function setBest(v) { el.best.textContent = v; }

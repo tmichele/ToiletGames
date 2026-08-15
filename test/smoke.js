@@ -439,8 +439,8 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   check('riprendendo il tempo riparte',
     (await page.evaluate(() => TG.engine.inspect().game.timeLeft)) < inPausa);
 
-  // ---- checkpoint ogni 5 livelli, valido per tutti i giochi ----
-  console.log('\n[checkpoint]');
+  // ---- si riparte sempre dall'ultimo livello raggiunto ----
+  console.log('\n[ripartenza]');
   /* Le sezioni precedenti ricaricano la pagina, quindi il gioco finto va
      registrato di nuovo: serve un gioco che salga di livello a comando. */
   await page.goto(URL);
@@ -465,46 +465,66 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     location.hash = '#/g/zzztest';
   });
   await sleep(300);
-  check('senza checkpoint si parte e basta',
+  check('alla prima partita si parte e basta',
     (await page.$$('#overlay-actions .btn')).length === 1);
   await page.click('.btn:has-text("Gioca")');
   await sleep(200);
 
-  // sale fino al livello 5 vincendo quattro volte
-  for (let l = 1; l <= 4; l++) {
+  /* Si sale al livello 3: un numero qualsiasi, non multiplo di 5. È il punto
+     della faccenda — la ripartenza non è più un premio ogni cinque livelli. */
+  for (let l = 1; l <= 2; l++) {
     await page.evaluate(() => { window.__cmd = 'win'; });
     await sleep(300);
     await page.click(`.btn:has-text("Livello ${l + 1}")`);
     await sleep(250);
   }
-  check('arrivato al livello 5', (await page.evaluate(() => TG.engine.getLevel())) === 5);
-  check('il livello 5 è segnato come checkpoint',
-    (await page.textContent('#hud-level')).includes('🚩'), await page.textContent('#hud-level'));
-  check('il checkpoint è salvato', (await page.evaluate(() => TG.scores.checkpoint('zzztest'))) === 5);
+  check('arrivato al livello 3', (await page.evaluate(() => TG.engine.getLevel())) === 3);
+  check('anche un livello qualsiasi vale come ripartenza',
+    (await page.evaluate(() => TG.scores.checkpoint('zzztest'))) === 3);
+  check('nell\'HUD il livello resta un numero e basta',
+    (await page.textContent('#hud-level')) === '3', await page.textContent('#hud-level'));
 
-  // si perde e si riparte dal checkpoint
+  // si perde e si riprende da dove si era arrivati
   await page.evaluate(() => { window.__cmd = 'lose'; });
   await sleep(300);
-  check('il game over propone la ripartenza dal checkpoint',
-    (await page.textContent('#overlay-actions')).includes('Dal livello 5'),
+  check('il game over propone di riprendere dal livello raggiunto',
+    (await page.textContent('#overlay-actions')).includes('Dal livello 3'),
     await page.textContent('#overlay-actions'));
-  await page.click('.btn:has-text("Dal livello 5")');
+  await page.click('.btn:has-text("Dal livello 3")');
   await sleep(300);
-  check('la nuova partita parte dal livello 5',
-    (await page.evaluate(() => TG.engine.getLevel())) === 5);
+  check('la nuova partita parte dal livello 3',
+    (await page.evaluate(() => TG.engine.getLevel())) === 3);
   check('il punteggio riparte da zero', (await page.evaluate(() => TG.engine.getScore())) === 0);
 
-  // il checkpoint sopravvive al ricaricamento della pagina
+  // e il segnalibro avanza appena si mette piede in un livello nuovo
+  await page.evaluate(() => { window.__cmd = 'win'; });
+  await sleep(300);
+  await page.click('.btn:has-text("Livello 4")');
+  await sleep(250);
+  check('il segnalibro avanza al livello successivo',
+    (await page.evaluate(() => TG.scores.checkpoint('zzztest'))) === 4);
+
   await page.evaluate(() => { window.__cmd = 'lose'; });
   await sleep(300);
   const boardCp = await page.textContent('#board');
-  check('la classifica segnala la partenza dal checkpoint', boardCp.includes('da 5'),
+  check('la classifica segnala la partenza a metà strada', boardCp.includes('da 3'),
     boardCp.replace(/\s+/g, ' ').slice(0, 80));
-  // ricaricando davvero la pagina il checkpoint deve essere ancora lì
+  /* La home lo dice prima di riaprire il gioco. Si guarda adesso: dopo un
+     ricaricamento il gioco finto non è più registrato e sparirebbe dall'elenco. */
+  await page.click('.btn:has-text("Altri giochi")');
+  await sleep(300);
+  check('la home dice da dove puoi riprendere',
+    (await page.textContent('#home-stats')).includes('Puoi riprendere 🚩 da'),
+    (await page.textContent('#home-stats')).replace(/\s+/g, ' ').slice(0, 140));
+  check('e la card del gioco porta il segnalibro',
+    (await page.textContent('.card:has-text("Test")')).includes('🚩4'),
+    (await page.textContent('.card:has-text("Test")')).replace(/\s+/g, ' '));
+
+  // ricaricando davvero la pagina il progresso deve essere ancora lì
   await page.goto(URL);
   await sleep(300);
-  check('il checkpoint sopravvive al ricaricamento',
-    (await page.evaluate(() => TG.scores.checkpoint('zzztest'))) === 5);
+  check('la ripartenza sopravvive al ricaricamento',
+    (await page.evaluate(() => TG.scores.checkpoint('zzztest'))) === 4);
 
   // ---- schermo tutto al gioco, pannelli nelle icone in alto ----
   console.log('\n[schermo e pannelli]');

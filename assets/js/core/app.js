@@ -36,7 +36,6 @@
   };
 
   var current = null;        // gioco aperto
-  var appenaSbloccato = 0;   // checkpoint conquistato in questa partita, da annunciare
 
   TG.ui.init(el);
   TG.input.init({ stage: el.stage, canvas: el.canvas, controls: el.touchControls });
@@ -60,7 +59,6 @@
     // successivo hashchange ricaricherebbe la partita appena avviata
     if (current && current.id === id && TG.engine.getState() !== 'idle') return;
     current = game;
-    appenaSbloccato = 0;
     TG.ui.showView('game');
     TG.ui.setHudLabels(game);
     TG.ui.setBest(TG.scores.best(game.id));
@@ -76,7 +74,7 @@
     return info ? '\n' + info : '';
   }
 
-  /* Avvia la partita dal livello indicato: 1, oppure il checkpoint sbloccato. */
+  /* Avvia la partita dal livello indicato: 1, oppure quello a cui eri arrivato. */
   function avvia(livello) {
     TG.sfx.unlock();
     TG.ui.hideOverlay();
@@ -97,8 +95,8 @@
         ghost: true,
         onClick: function () { avvia(cp); }
       });
-      corpo += '\n🚩 Checkpoint sbloccato: puoi ripartire dal livello ' + cp +
-        ' (i punti dei livelli saltati però non li prendi).';
+      corpo += '\n🚩 Sei arrivato al livello ' + cp + ': puoi ripartire da lì ' +
+        '(i punti dei livelli saltati però non li prendi).';
     }
 
     TG.ui.showOverlay({
@@ -119,18 +117,15 @@
   TG.engine.on('score', function (v) { TG.ui.setScore(v); });
   TG.engine.on('level', function (v) { TG.ui.setLevel(v); });
 
-  /* Arrivare a un livello multiplo di 5 sblocca la ripartenza da lì: si salva
-     subito, così resta anche se la partita finisce male un attimo dopo. */
+  /* Ogni livello raggiunto è una ripartenza: si salva subito, così resta anche
+     se la partita finisce male un attimo dopo. Non si annuncia — succede a ogni
+     livello, e un avviso ripetuto ogni volta è solo rumore. */
   TG.engine.on('checkpoint', function (livello) {
-    if (current && TG.scores.setCheckpoint(current.id, livello)) {
-      appenaSbloccato = livello;
-      TG.sfx.tone(660, 0.12, 'square', 0.08, 990);
-    }
+    if (current) TG.scores.setCheckpoint(current.id, livello);
   });
 
   TG.engine.on('levelclear', function (d) {
-    var body = (appenaSbloccato ? '🚩 Checkpoint: da ora puoi ripartire dal livello ' +
-        appenaSbloccato + '.\n' : '') +
+    var body =
       (d.message ? d.message + '\n' : '') +
       (d.bonus ? 'Bonus livello: <b>+' + d.bonus + '</b>\n' : '') +
       'Punteggio: <b>' + d.score + '</b>' +
@@ -169,7 +164,7 @@
     TG.ui.setBest(TG.scores.best(current.id));
     TG.ui.renderBoard(current.id, res.entry.id);
 
-    var body = (appenaSbloccato ? '🚩 Checkpoint sbloccato al livello ' + appenaSbloccato + '.\n' : '') +
+    var body =
       (message ? message + '\n' : '') +
       'Punteggio: <b>' + score + '</b> · livello <b>' + level + '</b>' +
       (partenza > 1 ? ' (partito dal ' + partenza + ')' : '') + '\n' +

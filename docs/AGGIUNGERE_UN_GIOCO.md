@@ -113,9 +113,10 @@ Ogni gioco decide come crescere, ma la struttura è sempre la stessa: `config(le
 restituisce i parametri, `start(level)` li applica, `levelComplete()` fa salire il
 livello.
 
-Attenzione a una conseguenza: grazie ai checkpoint una partita può **cominciare
-da un livello qualsiasi** multiplo di 5, quindi `start(level)` va scritto in modo
-che il livello 10 funzioni anche senza aver giocato i nove precedenti. Se il
+Attenzione a una conseguenza: si riparte sempre dal livello più alto raggiunto,
+quindi una partita può **cominciare da un livello qualsiasi** e `start(level)` va
+scritto in modo che il livello 10 funzioni anche senza aver giocato i nove
+precedenti. Se il
 gioco porta qualcosa da un livello all'altro (le vite dei mattoni, per esempio),
 serve un valore di partenza sensato anche quando `start` viene chiamato per la
 prima volta con un livello alto. Il punteggio **non** si azzera fra un livello e l'altro, quindi conviene
