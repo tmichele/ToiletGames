@@ -356,17 +356,20 @@ TG.registry.register({
     function update(dt) {
       var tap, azione, d;
 
+      /* La scelta si legge una volta sola: appena `scegli` cambia fase si esce,
+         altrimenti un secondo input arrivato nello stesso frame sovrascrive la
+         modalità appena scelta. */
       if (fase === 'menu') {
-        while ((tap = api.input.takeTap())) {
+        while (fase === 'menu' && (tap = api.input.takeTap())) {
           bottoni().forEach(function (b) {
             if (tap.x >= b.x && tap.x <= b.x + b.w && tap.y >= b.y && tap.y <= b.y + b.h) scegli(b.modo);
           });
         }
-        while ((d = api.input.takeDigit())) {
+        while (fase === 'menu' && (d = api.input.takeDigit())) {
           if (d === 1) scegli('cpu');
           if (d === 2) scegli('duo');
         }
-        while ((azione = api.input.take())) {
+        while (fase === 'menu' && (azione = api.input.take())) {
           if (azione === 'left') menuSel = 0;
           if (azione === 'right') menuSel = 1;
           if (azione === 'action') scegli(menuSel === 1 ? 'duo' : 'cpu');

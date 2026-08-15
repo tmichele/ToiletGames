@@ -93,8 +93,12 @@ TG.input = (function () {
       var p = toLogical(e.clientX, e.clientY); // tap
       tapQueue.push({ x: p.x, y: p.y });
       if (tapQueue.length > QUEUE_MAX) tapQueue.shift();
-      press('action');
-      release('action');
+      /* Un tocco produce **solo** un tap. Prima faceva scattare anche 'action',
+         e i giochi che leggono entrambe le code ricevevano due comandi dallo
+         stesso dito: in Forza 4 il tap sceglieva «In due» e l'azione, subito
+         dopo, confermava la voce evidenziata (la prima) rimettendo «vs CPU».
+         Chi vuole il pulsante azione lo dichiara con actionLabel, e la barra
+         spaziatrice continua a funzionare. */
       return;
     }
     var dir = Math.abs(dx) > Math.abs(dy)

@@ -150,6 +150,14 @@ sbagliando:
 - `api.input.stick` — `{x, y, attiva}` fra -1 e 1: la leva analogica, per i
   giochi in cui si naviga invece di scattare.
 
+Le code sono indipendenti e un gesto finisce in **una sola**: un tocco sul campo
+produce solo un tap, uno swipe solo una direzione, il pulsante azione solo
+`'action'`. Vale la pena ricordarlo perché è costato un bug: quando il tocco
+faceva scattare anche `'action'`, il menu di Forza 4 riceveva due comandi dallo
+stesso dito — il tap sceglieva «In due» e l'azione, letta subito dopo,
+confermava la voce evidenziata rimettendo «vs CPU». Se un gioco legge più code
+nello stesso `update`, conviene comunque fermarsi appena lo stato cambia.
+
 I valori di `controls` decidono i comandi a schermo: `dpad` (croce direzionale),
 `lr` (sinistra/destra piccoli), `lr-big` (due tasti che si dividono tutta la
 larghezza, per i giochi dove serve un bersaglio grande per il pollice),

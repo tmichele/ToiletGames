@@ -317,12 +317,15 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     (await page.evaluate(() => TG.engine.inspect().game.fase)) === 'menu');
   const fbox = await page.$eval('#canvas', el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
   const toScreen = (x, y) => ({ x: fbox.x + x / 360 * fbox.w, y: fbox.y + y / 380 * fbox.h });
-  const voceCpu = (await page.evaluate(() => TG.engine.inspect().game.menu))[0];
-  const pc = toScreen(voceCpu.x, voceCpu.y);
+  // le voci del menu sono esposte con il centro: si tocca lì, come un dito
+  const voce = (i) => page.evaluate((k) => TG.engine.inspect().game.menu[k], i);
+  const centroCpu = await voce(0);
+  const pc = toScreen(centroCpu.x, centroCpu.y);
   await page.mouse.click(pc.x, pc.y);
   await sleep(300);
   check('si sceglie la sfida contro la CPU',
-    (await page.evaluate(() => TG.engine.inspect().game.modo)) === 'cpu');
+    (await page.evaluate(() => TG.engine.inspect().game.modo)) === 'cpu',
+    await page.evaluate(() => TG.engine.inspect().game.modo));
 
   const col = (await page.evaluate(() => TG.engine.inspect().game.colonne))[3];
   const pcol = toScreen(col.x, col.y);
@@ -333,6 +336,45 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   check('il gettone scende e la CPU risponde', gettoni >= 2, gettoni + ' gettoni sulla griglia');
   check('la CPU gioca con il giallo',
     dopoMossa.board.flat().filter(v => v === 2).length >= 1);
+
+  /* 1 vs 1: toccare la seconda voce deve scegliere davvero il duo. Il tocco
+     produceva anche un'azione, e l'azione confermava la voce evidenziata (la
+     prima): partiva sempre la sfida contro la CPU. Si controlla la modalità e
+     poi il comportamento, perché è quello che si vede giocando: dopo la mossa
+     del rosso tocca a un umano, quindi la griglia deve restare ferma.
+     Si ripassa dalla home: rinavigare allo stesso hash non ricarica nulla. */
+  await page.goto(URL);
+  await sleep(200);
+  await page.goto(URL + '#/g/forza4');
+  await sleep(400);
+  await page.click('.btn:has-text("Gioca")');
+  await sleep(300);
+  const centroDuo = await voce(1);
+  const pd = toScreen(centroDuo.x, centroDuo.y);
+  await page.mouse.click(pd.x, pd.y);
+  await sleep(300);
+  check('si sceglie il gioco in due',
+    (await page.evaluate(() => TG.engine.inspect().game.modo)) === 'duo',
+    await page.evaluate(() => TG.engine.inspect().game.modo));
+  const colDuo = (await page.evaluate(() => TG.engine.inspect().game.colonne))[2];
+  const pcd = toScreen(colDuo.x, colDuo.y);
+  await page.mouse.click(pcd.x, pcd.y);
+  await sleep(2000);
+  const duoDopo = await page.evaluate(() => TG.engine.inspect().game);
+  check('in due il tocco cala un solo gettone',
+    duoDopo.board.flat().filter(v => v !== 0).length === 1,
+    duoDopo.board.flat().filter(v => v !== 0).length + ' gettoni');
+  check('in due la CPU non gioca: il turno resta al secondo umano',
+    duoDopo.turno === 2 && duoDopo.board.flat().filter(v => v === 2).length === 0);
+  // e il secondo giocatore muove dallo stesso dispositivo
+  const colDuo2 = (await page.evaluate(() => TG.engine.inspect().game.colonne))[4];
+  const pcd2 = toScreen(colDuo2.x, colDuo2.y);
+  await page.mouse.click(pcd2.x, pcd2.y);
+  await sleep(1200);
+  const duoDue = await page.evaluate(() => TG.engine.inspect().game);
+  check('anche il secondo giocatore muove sullo stesso schermo',
+    duoDue.board.flat().filter(v => v === 2).length === 1 && duoDue.turno === 1,
+    JSON.stringify({ gialli: duoDue.board.flat().filter(v => v === 2).length, turno: duoDue.turno }));
 
   // ---- Tessere: il tocco fa scorrere la tessera adiacente ----
   console.log('\n[tessere]');
