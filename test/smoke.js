@@ -6,6 +6,7 @@
    Con un Chromium già presente:  CHROMIUM_PATH=/percorso/chrome node test/smoke.js */
 const { chromium } = require('playwright');
 const path = require('path');
+const { creaPilota } = require('./orda-bot');
 
 const URL = 'file://' + path.resolve(__dirname, '..', 'index.html');
 const errors = [];
@@ -448,41 +449,54 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   check('riprendendo il tempo riparte',
     (await page.evaluate(() => TG.engine.inspect().game.timeLeft)) < inPausa);
 
-  // ---- Orda: leva, mostri, fuoco automatico ----
+  // ---- Orda: labirinto, mostri che dormono, fuoco automatico ----
   console.log('\n[orda]');
   await page.goto(URL + '#/g/orda');
   await sleep(400);
   await page.click('.btn:has-text("Gioca")');
-  await sleep(600);
+  await sleep(1500);
   check('orda ha la leva analogica', (await page.$$('#touch-controls .stick')).length === 1);
   const o0 = await page.evaluate(() => TG.engine.inspect().game);
   check('si parte con tre vite e la pistola', o0.vite === 3 && o0.arma === 'pistola' && o0.colpi === -1,
     JSON.stringify({ vite: o0.vite, arma: o0.arma, colpi: o0.colpi }));
+  check('il campo è un labirinto', o0.passaggi.length === o0.griglia.righe &&
+    o0.passaggi[0].length === o0.griglia.cols,
+    o0.griglia.cols + '×' + o0.griglia.righe + ' celle');
+  check('i mostri sono già in campo e dormono tutti',
+    o0.nemici.length > 0 && o0.svegli === 0, o0.nemici.length + ' mostri, ' + o0.svegli + ' svegli');
 
+  /* Si gioca davvero, con la leva vera: il pilota di test/orda-bot.js decide
+     dove andare e qui si trascina il pomello in quella direzione. È lo stesso
+     bot di balance.js, quindi quello che si verifica nel browser è la stessa
+     partita che si misura fuori. */
   const stickBox = await (await page.$('.stick')).boundingBox();
+  const stick = { x: 0, y: 0, attiva: false };
+  const pilota = creaPilota({ spinta: 1, reazione: 0.15, errore: 0, pesoCasse: 1 });
   await page.mouse.move(stickBox.x + stickBox.width / 2, stickBox.y + stickBox.height / 2);
   await page.mouse.down();
-  await page.mouse.move(stickBox.x + stickBox.width * 0.12, stickBox.y + stickBox.height * 0.5, { steps: 4 });
-  await sleep(1200);
-  const o1 = await page.evaluate(() => TG.engine.inspect().game);
-  check('la leva sposta il giocatore', o1.giocatore.x < o0.giocatore.x - 10,
-    Math.round(o0.giocatore.x) + ' -> ' + Math.round(o1.giocatore.x));
-  await page.mouse.up();
-
-  /* Il fuoco è automatico: senza toccare altro devono morire dei mostri. È la
-     meccanica centrale, e nel browser si vede solo così. */
-  let uccisi = 0, ondataMax = 0;
-  for (let i = 0; i < 40; i++) {
+  let svegliati = 0, abbattuti = 0, mosso = 0;
+  const partenza = { x: o0.giocatore.x, y: o0.giocatore.y };
+  for (let i = 0; i < 140; i++) {
     const s = await page.evaluate(() => TG.engine.getState() === 'running' ? TG.engine.inspect().game : null);
     if (!s) break;
-    uccisi = Math.max(uccisi, s.uccisi);
-    ondataMax = Math.max(ondataMax, s.ondata);
-    if (uccisi >= 5) break;
-    await sleep(250);
+    svegliati = Math.max(svegliati, s.svegli);
+    abbattuti = Math.max(abbattuti, s.uccisi);
+    mosso = Math.max(mosso, Math.hypot(s.giocatore.x - partenza.x, s.giocatore.y - partenza.y));
+    if (abbattuti >= 3) break;
+    pilota(s, stick, 0.15);
+    await page.mouse.move(stickBox.x + stickBox.width / 2 + stick.x * stickBox.width * 0.42,
+                          stickBox.y + stickBox.height / 2 + stick.y * stickBox.height * 0.42);
+    await sleep(150);
   }
-  check('si spara da soli e i mostri cadono', uccisi >= 5, uccisi + ' abbattuti');
+  await page.mouse.up();
+  check('la leva porta il giocatore in giro per il labirinto', mosso > 60,
+    'spostamento massimo ' + Math.round(mosso) + ' px');
+  check('avvicinandosi i mostri si svegliano', svegliati > 0, svegliati + ' svegliati');
+  /* Due mostri bastano: qui si verifica che il fuoco automatico funzioni nel
+     browser, non quanto è bravo il pilota — il livello intero lo gioca
+     balance.js, dove il tempo non è quello dell'orologio. */
+  check('si spara da soli e i mostri cadono', abbattuti >= 2, abbattuti + ' abbattuti');
   check('il punteggio sale', (await page.evaluate(() => TG.engine.getScore())) > 0);
-  check('le ondate partono', ondataMax >= 1, 'ondata ' + ondataMax);
 
   // ---- si riparte sempre dall'ultimo livello raggiunto ----
   console.log('\n[ripartenza]');

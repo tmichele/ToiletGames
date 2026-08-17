@@ -17,7 +17,7 @@ da `file://`) e giochi.
 | 🔴 **Forza 4** | Quattro di fila, vs CPU o in due | La CPU guarda sempre più mosse avanti (minimax) e smette di svarionare |
 | 🔢 **Tessere** | Rompicapo scorrevole (il «quindici») | Griglia da 3×3 (livelli 1-2) a 4×4 e 5×5, mescolamento più profondo; il tempo cresce con la griglia — un paio di minuti per il 3×3, quattro per il 4×4, oltre sei per il 5×5 |
 | 🧭 **Labirinto** | Prima persona, con una mappa che si dimentica | Labirinto più grande, memoria della mappa più corta (24s al 1° livello, 10s al 10°), meno alberi, vista più corta |
-| 👾 **Orda** | Sparatutto dall'alto: ondate di mostri e armi che cadono | Ondate più numerose, mostri più veloci e tipi nuovi che si aggiungono ai vecchi — scattanti dal 2°, corazzati dal 3°, tiratori dal 4°, gemelli che si sdoppiano dal 7° — con un boss ogni cinque livelli |
+| 👾 **Orda** | Sparatutto dall'alto in un labirinto: i mostri dormono finché non ti vedono | Ondate più numerose, mostri più veloci e con la vista più lunga (quindi se ne sveglia di più tutti insieme), tipi nuovi che si aggiungono ai vecchi — scattanti dal 2°, corazzati dal 3°, tiratori dal 4°, gemelli che si sdoppiano dal 7° — e un boss ogni cinque livelli |
 
 Il **Labirinto** si gioca in prima persona con il joystick. La pianta non è mai
 data: si disegna da sé in alto a destra con quello che i tuoi occhi hanno
@@ -48,6 +48,20 @@ giocare dipende da quali mattoni hai scelto di rompere. **Pong** e **Mattoni** s
 sotto il campo, che si dividono tutta la larghezza disponibile; in **Air Hockey**
 si trascina il dito, e il mazzuolo resta sopra il polpastrello per non finirci
 sotto.
+
+In **Orda** il campo è un labirinto visto dall'alto e i mostri **stanno fermi
+finché non ti vedono**: li vedi anche tu, spenti e a occhi chiusi nei corridoi, e
+decidi se svegliarli. Chi si sveglia ti cerca davvero — segue i corridoi, non
+attraversa i muri — e torna a dormire dopo qualche secondo che non ti vede. Si
+spara da soli verso il mostro più vicino **che si ha in vista**, quindi gli
+angoli contano: quello che decidi tu è dove stare. Anche sparare fa rumore e il
+rumore sveglia, muri compresi — il laser quasi niente, i razzi mezzo labirinto —
+ed è la ragione per cui l'arma migliore non è sempre quella giusta. I caricatori
+sono corti apposta: un'arma è un vantaggio a tempo, non un miglioramento
+definitivo. Il livello si supera ripulendo il labirinto prima che scada il tempo.
+Due dettagli non scontati: il labirinto ha degli **anelli** (in uno perfetto ogni fuga finirebbe
+in un vicolo cieco) e le comparse sono annunciate da un cerchio rosso, sempre
+lontano da te e fuori dalla tua vista.
 
 Gli avversari simulati seguono una regola comune (`TG.util.opponentSpeedRatio`):
 al primo livello si muovono poco sotto la tua velocità, intorno al terzo la
@@ -116,6 +130,7 @@ test/sandbox.js             esecuzione dei giochi fuori dal browser
 test/smoke.js               test di fumo con Playwright
 test/balance.js             banco di prova della difficoltà
 test/regole.js              meccaniche difficili da raggiungere nel browser
+test/orda-bot.js            pilota simulato di Orda (naviga il labirinto)
 ```
 
 La divisione è netta: il motore gestisce canvas, ciclo, pausa, livelli,
@@ -148,18 +163,20 @@ costerebbero partite intere: che i mattoni turbo accelerino davvero la pallina
 (senza sfondare il tetto di velocità), che gli impazziti la devino di un angolo
 che nessun rimbalzo normale produrrebbe, che il tocco di racchetta tolga punti,
 che le racchette del pong si accorcino, che il disco dell'hockey non esca dal
-tavolo nemmeno se lo schiacci in uno spigolo, che in Orda nessun mostro compaia
-addosso al giocatore e che finite le munizioni si torni alla pistola invece di
-restare disarmati.
+tavolo nemmeno se lo schiacci in uno spigolo. Per Orda controlla il labirinto e
+le sue regole: che ogni cella sia raggiungibile (un mostro chiuso in una sacca
+renderebbe il livello impossibile da finire), che ci siano degli anelli e non
+solo vicoli ciechi, che chi dorme non si muova e non si svegli da solo, che
+nessuno attraversi i muri, che i mostri compaiano lontano e annunciati, e che
+finite le munizioni si torni alla pistola invece di restare disarmati.
 
 Il primo profilo, «fermo», non tocca niente: serve a verificare che stare fermi
 faccia perdere. Un gioco che si vince senza giocare è rotto quanto uno
 impossibile, ed è successo davvero — nel pong l'avversario sbagliava così spesso
-che una racchetta immobile al centro faceva da muro. In Orda è successo di
-peggio: la mira è automatica, quindi restare immobili al centro voleva dire fare
-la torretta e vincere i primi livelli senza muovere un dito. Le ondate sono
-diventate folle fitte e i mostri entrano di slancio proprio per questo — chi si
-muove le scansa lo stesso, chi non si muove viene travolto.
+che una racchetta immobile al centro faceva da muro. In Orda il problema è
+strutturale: i mostri dormono finché non li guardi, quindi restare immobili
+sarebbe la strategia perfetta. È il tempo del livello a dire di no — si vince
+ripulendo il labirinto, e chi non si muove non ripulisce niente.
 
 Stato attuale (percentuale di livelli vinti dal profilo indicato):
 
@@ -174,9 +191,9 @@ Stato attuale (percentuale di livelli vinti dal profilo indicato):
 | Air Hockey · bravo | 98% | 85% | 25% | 0% | 0% |
 | Talpe · medio | 100% | 88% | 35% | 13% | 0% |
 | Talpe · bravo | 100% | 83% | 33% | 8% | 3% |
-| Orda · fermo | 5% | 5% | 0% | 0% | 0% |
-| Orda · medio | 100% | 93% | 70% | 23% | 8% |
-| Orda · bravo | 100% | 100% | 85% | 57% | 10% |
+| Orda · fermo | 0% | 0% | 0% | 0% | 0% |
+| Orda · medio | 100% | 100% | 78% | 98% | 75% |
+| Orda · bravo | 100% | 100% | 90% | 98% | 78% |
 
 **Forza 4**, **Tessere** e **Labirinto** non compaiono qui: sono giochi di
 turni, di ragionamento o di orientamento, dove profili basati su riflessi non
@@ -189,6 +206,13 @@ test risolve davvero il rompicapo con una ricerca in ampiezza, così la vittoria
 verificata invece che data per buona, e controlla che ogni mescolamento sia
 risolvibile: mescolare piazzando le tessere a caso renderebbe impossibile una
 partita su due, senza che il giocatore possa accorgersene.
+
+La riga di Orda va letta sapendo com'è fatto il suo bot: naviga il labirinto
+calcolando le distanze in celle, quindi gira attorno all'orda con una precisione
+che un pollice su un telefono non ha. Il calo non è regolare perché il 5° e il
+10° sono livelli col boss, più duri di quelli attorno: al 10° il profilo medio
+scende al 38%. La colonna «scarso» — che decide più lentamente e affonda meno la
+leva — cala prima di tutte, ed è il segno che a contare è il gioco e non il caso.
 
 Il bot simulato insegue la palla senza anticiparla e, nell'hockey, difende la
 porta molto peggio di una persona: i numeri servono a confrontare i livelli fra

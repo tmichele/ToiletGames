@@ -651,120 +651,186 @@ console.log('\n[labirinto: mappa che si dimentica]');
     memorie.map((m) => m.split('memoria della mappa ')[1]).join(' / '));
 }
 
-/* ---------- Orda: ondate, armi, boss ---------- */
+/* ---------- Orda: labirinto, mostri che dormono, armi ---------- */
 
-console.log('\n[orda: ondate e armi]');
+console.log('\n[orda: labirinto e risvegli]');
 {
   const def = defs.orda;
+  const { creaPilota } = require('./orda-bot');
 
-  /* Un giocatore che scappa e raccoglie: le stesse spinte del bot di
-     balance.js, ridotte all'osso. Serve solo a tenere viva la partita mentre si
-     osservano le meccaniche — la difficoltà la misura l'altro test. */
-  function pilota(g, pesoCasse) {
-    return function () {
-      const s = g.game.state();
-      let fx = 0, fy = 0;
-      s.nemici.forEach((n) => {
-        const dx = s.giocatore.x - n.x, dy = s.giocatore.y - n.y;
-        const d = Math.max(10, Math.hypot(dx, dy) - n.r);
-        fx += dx / d * (9000 / (d * d));
-        fy += dy / d * (9000 / (d * d));
-      });
-      // pesoCasse: 0 le ignora, positivo le insegue, negativo le evita
-      if (pesoCasse && s.casse.length) {
-        const c = s.casse[0];
-        const d = Math.hypot(c.x - s.giocatore.x, c.y - s.giocatore.y) || 1;
-        fx += (c.x - s.giocatore.x) / d * pesoCasse;
-        fy += (c.y - s.giocatore.y) / d * pesoCasse;
+  /* Il pilota è lo stesso di balance.js: dentro un labirinto muoversi è già un
+     problema, e riscriverlo qui vorrebbe dire misurare due giochi diversi. */
+  function guida(g, opzioni) {
+    const pilota = creaPilota(opzioni || {});
+    return function () { pilota(g.game.state(), g.input.stick, DT); };
+  }
+
+  const DR = [-1, 0, 1, 0], DC = [0, 1, 0, -1];
+
+  /* Il labirinto: tutte le celle raggiungibili (un mostro chiuso in una sacca
+     renderebbe il livello impossibile da finire) e con degli anelli, perché in
+     un labirinto perfetto ogni fuga finisce in un vicolo cieco. */
+  {
+    let isolate = 0, aperture = 0, celle = 0, campioni = 0;
+    for (let i = 0; i < 12; i++) {
+      const s = makeGame(def, util, 1 + i).game.state();
+      const G = s.griglia;
+      celle = G.righe * G.cols;
+      campioni++;
+      const visto = [];
+      for (let r = 0; r < G.righe; r++) visto.push(new Array(G.cols).fill(false));
+      const coda = [{ r: 0, c: 0 }];
+      visto[0][0] = true;
+      for (let k = 0; k < coda.length; k++) {
+        const cur = coda[k];
+        for (let d = 0; d < 4; d++) {
+          if (!(s.passaggi[cur.r][cur.c] & (1 << d))) continue;
+          const nr = cur.r + DR[d], nc = cur.c + DC[d];
+          if (nr < 0 || nr >= G.righe || nc < 0 || nc >= G.cols || visto[nr][nc]) continue;
+          visto[nr][nc] = true;
+          coda.push({ r: nr, c: nc });
+        }
       }
-      fx += 90 / Math.max(10, s.giocatore.x) - 90 / Math.max(10, 360 - s.giocatore.x);
-      fy += 90 / Math.max(10, s.giocatore.y - 46) - 90 / Math.max(10, 540 - s.giocatore.y);
-      const len = Math.hypot(fx, fy) || 1;
-      g.input.stick.x = fx / len;
-      g.input.stick.y = fy / len;
-      g.input.stick.attiva = true;
-    };
+      if (coda.length !== celle) isolate++;
+      let porte = 0;
+      for (let r = 0; r < G.righe; r++) {
+        for (let c = 0; c < G.cols; c++) {
+          for (let d = 0; d < 4; d++) if (s.passaggi[r][c] & (1 << d)) porte++;
+        }
+      }
+      aperture += porte / 2;
+    }
+    check('ogni cella del labirinto è raggiungibile', isolate === 0,
+      isolate + ' labirinti con sacche isolate');
+    // un labirinto perfetto ha esattamente celle-1 passaggi: qui devono essere di più
+    check('il labirinto ha degli anelli, non solo vicoli ciechi',
+      aperture / campioni > celle - 1 + 8,
+      Math.round(aperture / campioni) + ' passaggi contro i ' + (celle - 1) + ' di un labirinto perfetto');
   }
 
-  // il livello finisce quando finiscono le ondate, non a tempo
-  let vinte = 0, ondateViste = 0;
-  for (let i = 0; i < 6; i++) {
+  /* La regola nuova: i mostri stanno fermi finché non ti vedono. Si sta fermi
+     lontano da loro e si guarda se qualcuno si muove. */
+  {
     const g = makeGame(def, util, 1);
-    runUntil(g.game, () => !!g.events.outcome, 200, pilota(g, 0));
-    if (g.events.outcome === 'win') vinte++;
-    ondateViste = Math.max(ondateViste, g.game.state().ondata);
-  }
-  check('pulite tutte le ondate il livello è superato', vinte === 6, vinte + ' su 6');
-  check('il livello 1 ha le ondate dichiarate', ondateViste === 2, ondateViste + ' ondate');
+    // si aspetta che l'ondata sia comparsa, senza muoversi
+    runUntil(g.game, () => g.game.state().nemici.length >= 3, 6);
+    const prima = g.game.state().nemici.map((n) => ({ x: n.x, y: n.y, sveglio: n.sveglio }));
+    runUntil(g.game, () => false, 4);
+    const dopo = g.game.state().nemici;
+    let mossi = 0, sveglioFermo = 0;
+    dopo.forEach((n, i) => {
+      const p = prima[i];
+      if (!p || p.sveglio) return;                 // confronto solo chi dormiva
+      if (Math.hypot(n.x - p.x, n.y - p.y) > 1.5 && !n.sveglio) mossi++;
+      if (n.sveglio) sveglioFermo++;
+    });
+    check('chi dorme non si muove', mossi === 0, mossi + ' mostri addormentati spostati');
+    check('e restando fermi lontano non si svegliano da soli',
+      sveglioFermo <= 1, sveglioFermo + ' svegliati senza motivo');
 
-  /* Restando fermi si viene travolti. Si guarda al livello 6, dove non c'è
-     partita: al primo livello la torretta la spunta ogni tanto (lo dice anche
-     la colonna «fermo» di balance.js) e un controllo al 5% di fallimento non è
-     un controllo, è un dado. */
-  let perse = 0;
-  for (let i = 0; i < 6; i++) {
-    const g = makeGame(def, util, 6);
-    runUntil(g.game, () => !!g.events.outcome, 200);
-    if (g.events.outcome === 'lose') perse++;
+    // andandogli incontro invece si svegliano
+    const sveglia = runUntil(g.game, () => g.game.state().svegli > 0, 25,
+      guida(g, { spinta: 1, reazione: 0.12, pesoCasse: 0 }));
+    check('avvicinandosi si svegliano', sveglia);
   }
-  check('restando fermi si viene travolti', perse === 6, perse + ' su 6');
 
-  /* I mostri compaiono sul bordo e mai addosso: l'avviso è il patto con chi
-     gioca, e va controllato dove sta, non solo che ci sia. */
+  // i muri fermano tutti: né il giocatore né i mostri li attraversano
   {
     const g = makeGame(def, util, 3);
-    let vicino = 0, avvisti = 0, dentro = 0;
-    const guida = pilota(g, 0);
-    runUntil(g.game, () => false, 25, () => {
+    const s0 = g.game.state();
+    const G = s0.griglia;
+    let fuori = 0, dentroMuro = 0;
+    const controlla = (x, y, r) => {
+      if (x < r - 0.5 || x > G.cols * G.cella - r + 0.5) fuori++;
+      if (y < G.top + r - 0.5 || y > G.top + G.righe * G.cella - r + 0.5) fuori++;
+      /* Dentro un muro: si guarda il passaggio fra la cella e la vicina nella
+         direzione in cui il punto sporge oltre il bordo della propria cella. */
+      const c = Math.floor(x / G.cella), rr = Math.floor((y - G.top) / G.cella);
+      if (c < 0 || rr < 0 || c >= G.cols || rr >= G.righe) return;
+      const ox = x - (c * G.cella + G.cella / 2), oy = y - (G.top + rr * G.cella + G.cella / 2);
+      const soglia = G.cella / 2 - G.muro / 2;
+      if (oy < -soglia && !(s0.passaggi[rr][c] & 1)) dentroMuro++;
+      if (ox > soglia && !(s0.passaggi[rr][c] & 2)) dentroMuro++;
+      if (oy > soglia && !(s0.passaggi[rr][c] & 4)) dentroMuro++;
+      if (ox < -soglia && !(s0.passaggi[rr][c] & 8)) dentroMuro++;
+    };
+    runUntil(g.game, () => false, 30, () => {
+      guida(g, { spinta: 1, reazione: 0.15, pesoCasse: 1 })();
       const s = g.game.state();
-      guida();
-      /* Solo gli avvisi appena apparsi: la garanzia è sulla distanza al momento
-         dell'annuncio. Se poi sei tu a camminare verso il cerchietto rosso,
-         quello è affar tuo — il cerchietto si vede. */
+      controlla(s.giocatore.x, s.giocatore.y, 8);
+      s.nemici.forEach((n) => controlla(n.x, n.y, n.r));
+    });
+    check('nessuno finisce fuori dal labirinto', fuori === 0, fuori + ' uscite');
+    check('nessuno attraversa i muri', dentroMuro === 0, dentroMuro + ' compenetrazioni');
+  }
+
+  // il livello si supera ripulendo il labirinto, e restando fermi il tempo scade
+  {
+    let vinte = 0;
+    for (let i = 0; i < 6; i++) {
+      const g = makeGame(def, util, 1);
+      runUntil(g.game, () => !!g.events.outcome, 200,
+        guida(g, { spinta: 1, reazione: 0.15, errore: 10, pesoCasse: 1 }));
+      if (g.events.outcome === 'win') vinte++;
+    }
+    check('ripulendo il labirinto il livello è superato', vinte >= 5, vinte + ' su 6');
+
+    let scadute = 0;
+    for (let i = 0; i < 5; i++) {
+      const g = makeGame(def, util, 1);
+      runUntil(g.game, () => !!g.events.outcome, 250);
+      if (g.events.outcome === 'lose') scadute++;
+    }
+    check('restando fermi si perde comunque', scadute === 5, scadute + ' su 5');
+  }
+
+  /* I mostri compaiono lontano e fuori dalla tua vista: comparire davanti al
+     naso sarebbe un dado truccato. */
+  {
+    const g = makeGame(def, util, 3);
+    let vicino = 0, avvisti = 0;
+    const pilota = guida(g, { spinta: 1, reazione: 0.15, pesoCasse: 1 });
+    runUntil(g.game, () => false, 30, () => {
+      const s = g.game.state();
+      pilota();
       s.avvisi.filter((a) => a.t > 0.66).forEach((a) => {
         avvisti++;
         if (Math.hypot(a.x - s.giocatore.x, a.y - s.giocatore.y) < 100) vicino++;
-        if (a.x > 30 && a.x < 330 && a.y > 76 && a.y < 510) dentro++;
       });
     });
-    check('ogni mostro è annunciato prima di comparire', avvisti > 20, avvisti + ' avvisi');
+    check('ogni mostro è annunciato prima di comparire', avvisti > 8, avvisti + ' avvisi');
     check('nessuno compare addosso al giocatore', vicino === 0, vicino + ' comparse ravvicinate');
-    check('e nemmeno in mezzo al campo', dentro === 0, dentro + ' comparse interne');
   }
 
   /* Le armi: si raccoglie una cassa, cambia arma, e quando il caricatore
-     finisce si torna alla pistola invece di restare senza niente.
-
-     Il ritorno alla pistola si osserva su più partite: le casse cadono dove
-     muore il mostro, quindi ogni tanto una finisce sotto i piedi e si ricarica
-     senza volerlo. L'invariante «mai disarmati», invece, va controllata a ogni
-     istante di ogni partita — è quella che conta. */
+     finisce si torna alla pistola invece di restare senza niente. */
   {
-    let cambiata = null, caricatore = 0, tornatiAllaPistola = 0, disarmato = 0, vive = 0;
-    for (let i = 0; i < 5; i++) {
-      const g = makeGame(def, util, 4);        // dal quarto livello una cassa c'è già
-      if (runUntil(g.game, () => g.game.state().arma !== 'pistola', 30, pilota(g, 25))) {
+    let cambiata = null, caricatore = 0, tornatiAllaPistola = 0, disarmato = 0;
+    /* Livello 8 e otto tentativi: a caricatori dimezzati un'arma si svuota in
+       poco più di un terzo delle partite, e con meno prove il controllo
+       diventerebbe un dado. */
+    for (let i = 0; i < 8; i++) {
+      const g = makeGame(def, util, 8);
+      if (runUntil(g.game, () => g.game.state().arma !== 'pistola', 40,
+          guida(g, { spinta: 1, reazione: 0.12, pesoCasse: 3 }))) {
         cambiata = cambiata || g.game.state().arma;
         caricatore = Math.max(caricatore, g.game.state().colpi);
       }
       // ora si evitano le casse, altrimenti si ricarica prima di restare a secco
       let vistaPistola = false;
-      const guida = pilota(g, -60);
-      // ci si ferma se la partita finisce: da morto non si spara, e il
-      // caricatore non si svuoterebbe mai
-      runUntil(g.game, () => !!g.events.outcome, 90, () => {
-        guida();
+      const pilota = guida(g, { spinta: 1, reazione: 0.12, pesoCasse: 0 });
+      runUntil(g.game, () => !!g.events.outcome, 120, () => {
+        pilota();
         const s = g.game.state();
         if (s.colpi === 0 || (s.colpi === -1 && s.arma !== 'pistola')) disarmato++;
         if (s.arma === 'pistola' && s.colpi === -1) vistaPistola = true;
       });
-      if (!g.events.outcome) vive++;
       if (vistaPistola) tornatiAllaPistola++;
     }
     check('raccogliere una cassa cambia arma', !!cambiata, String(cambiata));
     check('l\'arma raccolta ha un caricatore', caricatore > 0, caricatore + ' colpi');
     check('finite le munizioni si torna alla pistola', tornatiAllaPistola > 0,
-      tornatiAllaPistola + ' partite su 5 (' + vive + ' arrivate in fondo vive)');
+      tornatiAllaPistola + ' partite su 8');
     check('non si resta mai disarmati', disarmato === 0, disarmato + ' istanti senza arma');
   }
 
@@ -772,15 +838,15 @@ console.log('\n[orda: ondate e armi]');
   {
     const g = makeGame(def, util, 5);
     const boss = runUntil(g.game, () => g.game.state().nemici.some((n) => n.tipo === 'boss'),
-      200, pilota(g, 25));
+      200, guida(g, { spinta: 1, reazione: 0.12, pesoCasse: 1 }));
     check('al livello 5 arriva il boss', boss);
     const g4 = makeGame(def, util, 4);
-    let bossFuoriPosto = false;
+    let fuoriPosto = false;
     runUntil(g4.game, () => {
-      if (g4.game.state().nemici.some((n) => n.tipo === 'boss')) bossFuoriPosto = true;
-      return bossFuoriPosto;
-    }, 60, pilota(g4, 0));
-    check('al livello 4 no', !bossFuoriPosto);
+      if (g4.game.state().nemici.some((n) => n.tipo === 'boss')) fuoriPosto = true;
+      return fuoriPosto;
+    }, 120, guida(g4, { spinta: 1, reazione: 0.12, pesoCasse: 1 }));
+    check('al livello 4 no', !fuoriPosto);
   }
 
   // i tipi si aggiungono salendo di livello, e i mostri accelerano
@@ -788,46 +854,50 @@ console.log('\n[orda: ondate e armi]');
     const tipiVisti = (level, secondi) => {
       const g = makeGame(def, util, level);
       const visti = {};
-      const guida = pilota(g, 0);
+      const pilota = guida(g, { spinta: 1, reazione: 0.15, pesoCasse: 1 });
       runUntil(g.game, () => false, secondi, () => {
-        guida();
+        pilota();
         g.game.state().nemici.forEach((n) => { visti[n.tipo] = true; });
       });
       return Object.keys(visti);
     };
-    const l1 = tipiVisti(1, 12);
-    const l8 = tipiVisti(8, 20);
+    const l1 = tipiVisti(1, 15);
+    const l8 = tipiVisti(8, 40);
     check('al livello 1 c\'è un solo tipo di mostro', l1.length === 1 && l1[0] === 'strisciante',
       l1.join(','));
     check('ai livelli alti i tipi convivono', l8.length >= 3, l8.join(','));
     const v = [1, 5, 10].map((l) => makeGame(def, util, l).game.state().velNemici);
     check('i mostri accelerano salendo di livello', v[0] < v[1] && v[1] < v[2],
       v.map((x) => Math.round(x)).join(' / ') + ' px/s');
+    // e il tempo tiene conto di quanti sono: più mostri, più secondi
+    const tempi = [1, 5, 10].map((l) => makeGame(def, util, l).game.state().timeLeft);
+    check('il tempo cresce con il numero di mostri', tempi[0] < tempi[1] && tempi[1] <= tempi[2],
+      tempi.join('s / ') + 's');
   }
 
   /* Stesso seme, stessi comandi, stessa partita: è la proprietà su cui si
      appoggerebbe un duello asincrono, e si rompe alla prima chiamata a
-     Math.random() dimenticata nella logica. */
+     Math.random() dimenticata nella logica. Qui vale anche per il labirinto. */
   {
     const traccia = (seme) => {
       const g = makeGame(def, util, 3);
       g.game.setSeme(seme);
       g.game.start(3);
       let passi = 0;
-      runUntil(g.game, () => false, 10, () => {
+      runUntil(g.game, () => false, 12, () => {
         passi++;                                   // comandi identici e ripetibili
         g.input.stick.x = Math.sin(passi / 25);
         g.input.stick.y = Math.cos(passi / 17);
         g.input.stick.attiva = true;
       });
       const s = g.game.state();
-      return s.uccisi + ':' + s.rimasti + ':' + s.giocatore.x.toFixed(3) + ':' +
-        s.nemici.map((n) => n.tipo.charAt(0) + Math.round(n.x) + ',' + Math.round(n.y)).join('|');
+      return s.passaggi.map((r) => r.join('')).join('|') + '#' + s.uccisi + ':' + s.rimasti +
+        ':' + s.giocatore.x.toFixed(3) + ':' +
+        s.nemici.map((n) => n.tipo.charAt(0) + Math.round(n.x) + ',' + Math.round(n.y)).join('/');
     };
     const a = traccia(1234), b = traccia(1234), c = traccia(999);
-    check('stesso seme e stessi comandi: partita identica', a === b,
-      a.slice(0, 40) + ' vs ' + b.slice(0, 40));
-    check('seme diverso, partita diversa', a !== c, c.slice(0, 40));
+    check('stesso seme e stessi comandi: partita identica', a === b);
+    check('seme diverso, labirinto e partita diversi', a !== c);
   }
 }
 

@@ -194,6 +194,14 @@ Se il gioco nasconde informazione al giocatore (per esempio la pallina
 invisibile dei mattoni fantasma), il bot deve subirla anche lui: legge lo stato,
 quindi vedrebbe tutto e la meccanica non comparirebbe nei numeri.
 
+Se il campo ha dei muri, il bot va scritto per celle e non per spinte: sommare
+«scappa da lì» e «vai di là» dà una direzione che finisce contro un muro. Il
+pilota di Orda (`test/orda-bot.js`, condiviso da `balance.js` e `regole.js`)
+calcola le distanze in celle dal giocatore e dai mostri svegli, sceglie la cella
+dove conviene essere e percorre il corridoio che ci porta. Perché possa farlo, il
+gioco espone la mappa in `state()`: è lecito, perché il labirinto sta tutto sullo
+schermo e il bot non vede niente di più di chi gioca.
+
 Attenzione a un errore facile: se l'avversario simulato ri-sorteggia il proprio
 errore di mira a ogni frame, la media annulla l'errore e l'avversario diventa
 infallibile. L'errore va sorteggiato una volta per scambio e tenuto.
