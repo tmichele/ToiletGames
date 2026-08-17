@@ -4,7 +4,18 @@ TG.ui = (function () {
 
   var el = {};
 
-  function init(refs) { el = refs; }
+  function init(refs) {
+    el = refs;
+    renderVersione();
+  }
+
+  /* La versione resta in barra anche mentre si gioca: è lì per dire a colpo
+     d'occhio se la pagina caricata è l'ultima pubblicata o una copia in cache. */
+  function renderVersione() {
+    if (!el.version || !TG.versione) return;
+    el.version.textContent = 'v' + TG.versione.numero;
+    el.version.title = 'Versione ' + TG.versione.numero + ' del ' + TG.versione.data;
+  }
 
   /* ---------- home ---------- */
 

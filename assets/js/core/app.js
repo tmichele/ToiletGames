@@ -32,7 +32,8 @@
     modalHelp: document.getElementById('modal-help'),
     modalClose: document.getElementById('modal-close'),
     touchControls: document.getElementById('touch-controls'),
-    howto: document.getElementById('game-howto')
+    howto: document.getElementById('game-howto'),
+    version: document.getElementById('app-version')
   };
 
   var current = null;        // gioco aperto

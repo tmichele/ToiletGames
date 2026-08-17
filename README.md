@@ -82,6 +82,30 @@ la classifica segna «da 7» accanto ai risultati partiti a metà strada, così 
 punteggi restano confrontabili. Il segnalibro si sposta appena si mette piede nel
 livello nuovo, quindi resta anche se si perde subito dopo.
 
+## Versione
+
+In alto, accanto al titolo, c'è sempre il numero di release: `v1`, `v2`, e così
+via. Toccandolo (o passandoci sopra) compare anche la data. Non è un vezzo: la
+pagina è statica e il browser la tiene volentieri in cache, quindi capita di
+guardare una copia vecchia convinti di vedere l'ultima. Il numero in barra
+risponde a colpo d'occhio — se è più basso di quello appena pubblicato, quella
+che si sta guardando è cache, non il sito.
+
+Il numero sta in un posto solo, `assets/js/core/version.js`. **A ogni
+pubblicazione si alza di uno e si aggiorna la data**, nello stesso commit delle
+modifiche che si stanno rilasciando:
+
+```js
+TG.versione = {
+  numero: 2,
+  data: '2026-08-18'
+};
+```
+
+Il test di fumo controlla che il numero sia in pagina e visibile anche durante
+una partita, così se il segnale si rompe qualcuno se ne accorge; che sia stato
+alzato, invece, resta un gesto da fare a mano.
+
 ## Uso
 
 ```
@@ -98,7 +122,9 @@ pulsante ⏸ mettono in pausa.
 **Mentre giochi lo schermo è tutto campo e comandi**: niente da scorrere sotto.
 La classifica 🏆 e le istruzioni ❓ del gioco aperto stanno nelle icone in alto a
 destra, accanto ad audio e profilo; aprirle mette in pausa, e si chiudono con la
-✕, con `Esc` o toccando fuori. Il campo si adatta allo spazio disponibile
+✕, con `Esc` o toccando fuori. In partita la barra ospita cinque bottoni più il
+numero di versione: il nome della suite si riduce al 🚽 per fargli posto, così
+anche su uno schermo da 320px non esce niente dal bordo. Il campo si adatta allo spazio disponibile
 mantenendo le proporzioni del gioco, quindi su schermi alti o bassi cambia la
 dimensione, non l'inquadratura.
 
@@ -114,6 +140,7 @@ classifica cancella i risultati di quel gioco.
 index.html                  guscio della pagina + elenco degli script
 assets/css/style.css        interfaccia
 assets/js/core/
+  version.js                numero di release mostrato in barra
   util.js                   funzioni di appoggio (random, collisioni, disegno)
   storage.js                localStorage con fallback in memoria
   sfx.js                    effetti sonori sintetizzati (WebAudio)

@@ -13,7 +13,8 @@
 
 <header class="topbar">
   <button class="topbar__back" id="btn-back" hidden aria-label="Torna all'elenco">←</button>
-  <h1 class="topbar__logo"><span aria-hidden="true">🚽</span> Toilet<span class="accent">Games</span></h1>
+  <h1 class="topbar__logo"><span aria-hidden="true">🚽</span> <span class="topbar__word">Toilet<span class="accent">Games</span></span></h1>
+  <span class="topbar__version" id="app-version"></span>
   <div class="topbar__actions">
     <button class="icon-btn" id="btn-board" title="Classifica" aria-label="Classifica del gioco" hidden>🏆</button>
     <button class="icon-btn" id="btn-help" title="Istruzioni" aria-label="Come si gioca" hidden>❓</button>
@@ -71,6 +72,7 @@
   </div>
 </div>
 
+<script src="assets/js/core/version.js"></script>
 <script src="assets/js/core/util.js"></script>
 <script src="assets/js/core/storage.js"></script>
 <script src="assets/js/core/sfx.js"></script>

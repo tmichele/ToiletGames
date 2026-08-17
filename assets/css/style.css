@@ -70,17 +70,60 @@ button { font-family: inherit; color: inherit; }
   z-index: 20;
 }
 
+/* Il titolo è l'unica cosa comprimibile della barra: su schermi stretti si
+   accorcia lui (min-width:0, altrimenti il testo impone la sua larghezza e
+   spinge fuori le icone) invece di far uscire i comandi dallo schermo. */
 .topbar__logo {
   font-size: 1.15rem;
   margin: 0;
   letter-spacing: 0.5px;
   font-weight: 700;
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .topbar__logo .accent { color: var(--accent); }
 
-.topbar__actions { display: flex; gap: 6px; }
+/* In partita la barra ospita cinque bottoni e la versione: il nome della suite
+   è la cosa che serve meno (c'è la freccia per tornare indietro) e resta solo
+   il 🚽. Non si toglie dal DOM ma si nasconde alla vista, così il titolo della
+   pagina continua a esistere per chi usa uno screen reader. */
+body.is-playing .topbar__word {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Il numero di release sta accanto al titolo, sempre: piccolo e smorto, si
+   legge quando lo si cerca e non ruba spazio ai comandi. */
+.topbar__version {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--fg-dim);
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 7px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.topbar__actions { display: flex; gap: 6px; flex: 0 0 auto; }
+
+/* Sotto i 360px (iPhone SE e simili) in partita ci stanno cinque bottoni più
+   la versione: si stringono i comandi invece di mangiarsi tutto il titolo. */
+@media (max-width: 360px) {
+  .topbar { gap: 6px; }
+  .topbar__actions { gap: 4px; }
+  .topbar__version { padding: 2px 5px; font-size: 0.65rem; }
+  .icon-btn, .topbar__back { width: 32px; height: 32px; }
+}
 
 .topbar__back {
   background: var(--bg-soft);
@@ -90,6 +133,7 @@ button { font-family: inherit; color: inherit; }
   height: 36px;
   font-size: 1.1rem;
   cursor: pointer;
+  flex: 0 0 auto;
 }
 
 .icon-btn {

@@ -35,6 +35,13 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   check('10 giochi in elenco', cards.length === 10, cards.length + ' trovati');
   check('titoli presenti', (await page.textContent('#game-grid')).includes('Serpente'));
 
+  // La versione in barra è il modo per accorgersi di una pagina vecchia in
+  // cache: se sparisce o resta vuota il segnale non c'è più, e nessun altro
+  // test se ne accorgerebbe.
+  const versione = (await page.textContent('#app-version') || '').trim();
+  check('versione mostrata in alto', /^v\d+$/.test(versione), versione || 'vuota');
+  check('versione visibile', await page.isVisible('#app-version'));
+
   const canvasHash = () => page.evaluate(() => {
     const c = document.getElementById('canvas');
     const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
@@ -56,6 +63,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const h2 = await canvasHash();
   check('il campo si aggiorna', h1 !== h2);
   check('stato running', (await page.evaluate(() => TG.engine.getState())) === 'running');
+  check('versione visibile anche in partita', await page.isVisible('#app-version'));
   // punteggio: forzo qualche boccone consumando food via API interne non esposte -> verifico solo che non crashi
   await sleep(1500);
   check('nessun crash dopo 2s', (await page.evaluate(() => TG.engine.getState())) !== 'idle');
