@@ -236,8 +236,8 @@ Stato attuale (percentuale di livelli vinti dal profilo indicato):
 | Talpe · medio | 100% | 88% | 35% | 13% | 0% |
 | Talpe · bravo | 100% | 83% | 33% | 8% | 3% |
 | Orda · fermo | 0% | 0% | 0% | 0% | 0% |
-| Orda · medio | 100% | 100% | 78% | 98% | 75% |
-| Orda · bravo | 100% | 100% | 90% | 98% | 78% |
+| Orda · medio | 100% | 100% | 93% | 98% | 78% |
+| Orda · bravo | 100% | 100% | 85% | 95% | 85% |
 
 **Forza 4**, **Tessere** e **Labirinto** non compaiono qui: sono giochi di
 turni, di ragionamento o di orientamento, dove profili basati su riflessi non
@@ -253,10 +253,18 @@ partita su due, senza che il giocatore possa accorgersene.
 
 La riga di Orda va letta sapendo com'è fatto il suo bot: naviga il dungeon
 calcolando le distanze in celle, quindi gira attorno all'orda con una precisione
-che un pollice su un telefono non ha. Il calo non è regolare perché il 5° e il
-10° sono livelli col boss, più duri di quelli attorno: al 10° il profilo medio
-scende al 38%. La colonna «scarso» — che decide più lentamente e affonda meno la
-leva — cala prima di tutte, ed è il segno che a contare è il gioco e non il caso.
+che un pollice su un telefono non ha, e nelle camere aperte la mira automatica lo
+favorisce più di quanto favorisca una persona. Il calo non è regolare perché il
+5° e il 10° sono livelli col boss, più duri di quelli attorno: al 10° il profilo
+medio scende al 45%. La colonna «scarso» — che decide più lentamente e affonda
+meno la leva — cala prima di tutte, ed è il segno che a contare è il gioco e non
+il caso.
+
+Sui livelli col boss il rumore è alto (quaranta partite per casella, oscillazioni
+di una quindicina di punti fra una misura e l'altra): le caselle del 5° e del 10°
+vanno lette come ordini di grandezza, non come decimali. Il numero da guardare
+resta quello della riga «fermo», che deve stare a zero ovunque, e lì il margine
+non è ambiguo.
 
 Il bot simulato insegue la palla senza anticiparla e, nell'hockey, difende la
 porta molto peggio di una persona: i numeri servono a confrontare i livelli fra

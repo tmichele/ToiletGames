@@ -117,8 +117,12 @@ function config(level) {
        mostri ci sono da trovare, non deciso a occhio: un livello con il doppio
        dei mostri e lo stesso tempo non è più difficile, è impossibile. */
     /* Il boss è una spugna: senza secondi in più il livello con il boss non è
-       più difficile degli altri, è solo una corsa persa contro l'orologio. */
-    tempo: Math.round(38 + 3.3 * totaleMostri(level)) + (level % 5 === 0 ? 25 : 0),
+       più difficile degli altri, è solo una corsa persa contro l'orologio.
+       Erano 25 secondi quando il campo era tutto corridoi e il boss andava
+       trovato; adesso si raduna in una camera con la sua ondata e lo si incontra
+       subito, e con 25 il livello del boss aveva smesso di essere uno scalino
+       (il profilo medio passava dal 78% al 98%). */
+    tempo: Math.round(38 + 3.3 * totaleMostri(level)) + (level % 5 === 0 ? 12 : 0),
     dropChance: Math.min(0.26 + level * 0.006, 0.36),
     cuoreChance: Math.max(0.03, 0.10 - level * 0.006),
     boss: level % 5 === 0,
