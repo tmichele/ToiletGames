@@ -10,6 +10,6 @@ var TG = window.TG || {};
 window.TG = TG;
 
 TG.versione = {
-  numero: 1,
+  numero: 2,
   data: '2026-08-17'
 };

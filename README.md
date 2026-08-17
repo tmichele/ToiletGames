@@ -17,7 +17,7 @@ da `file://`) e giochi.
 | 🔴 **Forza 4** | Quattro di fila, vs CPU o in due | La CPU guarda sempre più mosse avanti (minimax) e smette di svarionare |
 | 🔢 **Tessere** | Rompicapo scorrevole (il «quindici») | Griglia da 3×3 (livelli 1-2) a 4×4 e 5×5, mescolamento più profondo; il tempo cresce con la griglia — un paio di minuti per il 3×3, quattro per il 4×4, oltre sei per il 5×5 |
 | 🧭 **Labirinto** | Prima persona, con una mappa che si dimentica | Labirinto più grande, memoria della mappa più corta (24s al 1° livello, 10s al 10°), meno alberi, vista più corta |
-| 👾 **Orda** | Sparatutto dall'alto in un labirinto: i mostri dormono finché non ti vedono | Ondate più numerose, mostri più veloci e con la vista più lunga (quindi se ne sveglia di più tutti insieme), tipi nuovi che si aggiungono ai vecchi — scattanti dal 2°, corazzati dal 3°, tiratori dal 4°, gemelli che si sdoppiano dal 7° — e un boss ogni cinque livelli |
+| 👾 **Orda** | Sparatutto dall'alto in un dungeon di camere e corridoi: i mostri dormono finché non ti vedono | Ondate più numerose, mostri più veloci e con la vista più lunga (quindi se ne sveglia di più tutti insieme), tipi nuovi che si aggiungono ai vecchi — scattanti dal 2°, corazzati dal 3°, tiratori dal 4°, gemelli che si sdoppiano dal 7° — e un boss ogni cinque livelli |
 
 Il **Labirinto** si gioca in prima persona con il joystick. La pianta non è mai
 data: si disegna da sé in alto a destra con quello che i tuoi occhi hanno
@@ -49,19 +49,33 @@ sotto il campo, che si dividono tutta la larghezza disponibile; in **Air Hockey*
 si trascina il dito, e il mazzuolo resta sopra il polpastrello per non finirci
 sotto.
 
-In **Orda** il campo è un labirinto visto dall'alto e i mostri **stanno fermi
-finché non ti vedono**: li vedi anche tu, spenti e a occhi chiusi nei corridoi, e
-decidi se svegliarli. Chi si sveglia ti cerca davvero — segue i corridoi, non
-attraversa i muri — e torna a dormire dopo qualche secondo che non ti vede. Si
-spara da soli verso il mostro più vicino **che si ha in vista**, quindi gli
-angoli contano: quello che decidi tu è dove stare. Anche sparare fa rumore e il
-rumore sveglia, muri compresi — il laser quasi niente, i razzi mezzo labirinto —
-ed è la ragione per cui l'arma migliore non è sempre quella giusta. I caricatori
-sono corti apposta: un'arma è un vantaggio a tempo, non un miglioramento
-definitivo. Il livello si supera ripulendo il labirinto prima che scada il tempo.
-Due dettagli non scontati: il labirinto ha degli **anelli** (in uno perfetto ogni fuga finirebbe
-in un vicolo cieco) e le comparse sono annunciate da un cerchio rosso, sempre
-lontano da te e fuori dalla tua vista.
+In **Orda** il campo è un **dungeon** visto dall'alto — camere aperte collegate
+da corridoi — e i mostri **stanno fermi finché non ti vedono**: li vedi anche tu,
+spenti e a occhi chiusi, e decidi se svegliarli. Chi si sveglia ti cerca davvero
+— segue i corridoi, non attraversa i muri — e torna a dormire dopo qualche
+secondo che non ti vede. Si spara da soli verso il mostro più vicino **che si ha
+in vista**, quindi gli angoli contano: quello che decidi tu è dove stare.
+
+Le **camere** sono il cuore del campo, e sono lì per una ragione precisa. Quando
+era tutto corridoi larghi una cella la vista non superava mai l'angolo: i mostri
+si incontravano in fila indiana, uno o due alla volta, e un'orda non si formava
+proprio. Nelle camere invece ci si vede da lontano e ci si sveglia in gruppo — è
+lo spazio in cui l'orda diventa un'orda, ed è quello che dà un senso alle armi ad
+area. I mostri ci si **radunano apposta** quando compaiono, così ogni ondata ha
+un posto dove sta succedendo qualcosa; uno su sei nasce comunque nei corridoi,
+perché il resto del campo non diventi una passeggiata garantita. Le camere sono
+circa un terzo del campo: i due terzi di corridoi sono il posto dove infilarsi
+quando la stanza si riempie, e affrontarli uno per volta.
+
+Anche sparare fa rumore e il rumore sveglia, muri compresi — il laser quasi
+niente, i razzi mezzo dungeon — ed è la ragione per cui l'arma migliore non è
+sempre quella giusta. I caricatori sono corti apposta: un'arma è un vantaggio a
+tempo, non un miglioramento definitivo. Il livello si supera ripulendo il dungeon
+prima che scada il tempo. Due dettagli non scontati: i corridoi hanno degli
+**anelli** e ogni camera ha almeno due porte (in un labirinto perfetto ogni fuga
+finirebbe in un vicolo cieco, e una camera con una porta sola è un vicolo cieco
+grande), e le comparse sono annunciate da un cerchio rosso, sempre lontano da te
+e fuori dalla tua vista.
 
 Gli avversari simulati seguono una regola comune (`TG.util.opponentSpeedRatio`):
 al primo livello si muovono poco sotto la tua velocità, intorno al terzo la
@@ -157,7 +171,7 @@ test/sandbox.js             esecuzione dei giochi fuori dal browser
 test/smoke.js               test di fumo con Playwright
 test/balance.js             banco di prova della difficoltà
 test/regole.js              meccaniche difficili da raggiungere nel browser
-test/orda-bot.js            pilota simulato di Orda (naviga il labirinto)
+test/orda-bot.js            pilota simulato di Orda (naviga il dungeon)
 ```
 
 La divisione è netta: il motore gestisce canvas, ciclo, pausa, livelli,
@@ -190,12 +204,15 @@ costerebbero partite intere: che i mattoni turbo accelerino davvero la pallina
 (senza sfondare il tetto di velocità), che gli impazziti la devino di un angolo
 che nessun rimbalzo normale produrrebbe, che il tocco di racchetta tolga punti,
 che le racchette del pong si accorcino, che il disco dell'hockey non esca dal
-tavolo nemmeno se lo schiacci in uno spigolo. Per Orda controlla il labirinto e
+tavolo nemmeno se lo schiacci in uno spigolo. Per Orda controlla il dungeon e
 le sue regole: che ogni cella sia raggiungibile (un mostro chiuso in una sacca
 renderebbe il livello impossibile da finire), che ci siano degli anelli e non
-solo vicoli ciechi, che chi dorme non si muova e non si svegli da solo, che
-nessuno attraversi i muri, che i mostri compaiano lontano e annunciati, e che
-finite le munizioni si torni alla pistola invece di restare disarmati.
+solo vicoli ciechi, che le camere ci siano davvero, siano vuote dentro e abbiano
+almeno due porte l'una, che i mostri ci si radunino (senza raduno la percentuale
+crollerebbe a quel terzo di campo che le camere occupano), che chi dorme non si
+muova e non si svegli da solo, che nessuno attraversi i muri, che i mostri
+compaiano lontano e annunciati, e che finite le munizioni si torni alla pistola
+invece di restare disarmati.
 
 Il primo profilo, «fermo», non tocca niente: serve a verificare che stare fermi
 faccia perdere. Un gioco che si vince senza giocare è rotto quanto uno
@@ -234,7 +251,7 @@ verificata invece che data per buona, e controlla che ogni mescolamento sia
 risolvibile: mescolare piazzando le tessere a caso renderebbe impossibile una
 partita su due, senza che il giocatore possa accorgersene.
 
-La riga di Orda va letta sapendo com'è fatto il suo bot: naviga il labirinto
+La riga di Orda va letta sapendo com'è fatto il suo bot: naviga il dungeon
 calcolando le distanze in celle, quindi gira attorno all'orda con una precisione
 che un pollice su un telefono non ha. Il calo non è regolare perché il 5° e il
 10° sono livelli col boss, più duri di quelli attorno: al 10° il profilo medio

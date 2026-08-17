@@ -708,6 +708,65 @@ console.log('\n[orda: labirinto e risvegli]');
       Math.round(aperture / campioni) + ' passaggi contro i ' + (celle - 1) + ' di un labirinto perfetto');
   }
 
+  /* Le camere: il campo è un dungeon, non un labirinto di soli corridoi. Sono
+     lo spazio in cui l'orda si accumula, quindi devono esserci davvero, essere
+     vuote dentro e avere più di un'uscita — una camera con una porta sola è un
+     vicolo cieco grande, e con l'orda dentro è una condanna. */
+  {
+    let camere = 0, celleCamera = 0, campioni = 0, conUnaPorta = 0, muriDentro = 0;
+    for (let i = 0; i < 12; i++) {
+      const s = makeGame(def, util, 1 + i).game.state();
+      const G = s.griglia;
+      campioni++;
+      camere += s.stanze.length;
+      s.stanze.forEach((st) => {
+        celleCamera += st.w * st.h;
+        let porte = 0;
+        for (let r = st.r0; r < st.r0 + st.h; r++) {
+          for (let c = st.c0; c < st.c0 + st.w; c++) {
+            for (let d = 0; d < 4; d++) {
+              const nr = r + DR[d], nc = c + DC[d];
+              const fuori = nr < st.r0 || nr >= st.r0 + st.h || nc < st.c0 || nc >= st.c0 + st.w;
+              const aperto = !!(s.passaggi[r][c] & (1 << d));
+              if (!fuori && !aperto) muriDentro++;          // dentro non c'è niente
+              if (fuori && aperto && nr >= 0 && nc >= 0 && nr < G.righe && nc < G.cols) porte++;
+            }
+          }
+        }
+        if (porte < 2) conUnaPorta++;
+      });
+    }
+    check('il campo ha delle camere, non solo corridoi',
+      camere / campioni >= 3 && celleCamera / campioni >= 15,
+      (camere / campioni).toFixed(1) + ' camere per un totale di ' +
+      (celleCamera / campioni).toFixed(1) + ' celle su 108');
+    check('dentro le camere non ci sono muri', muriDentro === 0, muriDentro + ' muri interni');
+    check('ogni camera ha almeno due uscite', conUnaPorta === 0,
+      conUnaPorta + ' camere con una porta sola');
+  }
+
+  /* E i mostri si radunano lì: sparpagliati uno per corridoio si incontrano in
+     fila indiana, che è esattamente quello che le camere devono togliere. */
+  {
+    let inCamera = 0, totali = 0;
+    for (let i = 0; i < 6; i++) {
+      const g = makeGame(def, util, 3);
+      // si sta fermi: i mostri appena comparsi dormono dove sono nati
+      runUntil(g.game, () => g.game.state().nemici.length >= 6, 12);
+      const s = g.game.state();
+      const G = s.griglia;
+      s.nemici.forEach((n) => {
+        const c = Math.floor(n.x / G.cella), r = Math.floor((n.y - G.top) / G.cella);
+        totali++;
+        if (s.stanze.some((st) => r >= st.r0 && r < st.r0 + st.h && c >= st.c0 && c < st.c0 + st.w)) inCamera++;
+      });
+    }
+    // le camere sono circa un quinto del campo: se il raduno non ci fosse, qui
+    // si leggerebbe quel quinto
+    check('i mostri si radunano nelle camere', totali > 0 && inCamera / totali > 0.5,
+      Math.round(inCamera / totali * 100) + '% dei mostri comparsi è in una camera');
+  }
+
   /* La regola nuova: i mostri stanno fermi finché non ti vedono. Si sta fermi
      lontano da loro e si guarda se qualcuno si muove. */
   {

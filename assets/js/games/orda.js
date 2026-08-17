@@ -1,16 +1,27 @@
-/* Orda — sparatutto dall'alto dentro un labirinto.
+/* Orda — sparatutto dall'alto dentro un dungeon.
 
-   Il campo è un labirinto 2D visto dall'alto. I mostri stanno fermi finché non
-   ti vedono: li vedi anche tu, immobili nei corridoi, e decidi se svegliarli.
-   Chi si sveglia ti cerca davvero — segue i corridoi, non attraversa i muri —
-   e dopo qualche secondo senza vederti torna a dormire.
+   Il campo è un dungeon 2D visto dall'alto: camere aperte collegate da
+   corridoi. I mostri stanno fermi finché non ti vedono: li vedi anche tu,
+   immobili, e decidi se svegliarli. Chi si sveglia ti cerca davvero — segue i
+   corridoi, non attraversa i muri — e dopo qualche secondo senza vederti torna
+   a dormire.
+
+   Le camere sono arrivate dopo, e cambiano il gioco più di quanto sembri. Con
+   il campo tutto a corridoi larghi una cella la vista non superava mai
+   l'angolo: i mostri si incontravano in fila indiana, uno o due alla volta, e
+   un'orda non si formava proprio. Nelle camere invece ci si vede da lontano e
+   ci si sveglia insieme — è lo spazio in cui l'orda diventa un'orda, ed è la
+   ragione per cui le armi ad area hanno un senso. I mostri ci si radunano
+   apposta quando compaiono. I corridoi restano i due terzi del campo: sono il
+   posto dove infilarsi quando la camera si riempie.
 
    Da qui vengono le due decisioni di fondo:
 
-   - il labirinto non è perfetto, ha degli anelli. In un labirinto senza anelli
-     ogni corridoio finisce in un vicolo cieco, e con l'orda alle calcagna un
+   - i corridoi hanno degli anelli. Scavati come un labirinto perfetto ogni
+     corridoio finirebbe in un vicolo cieco, e con l'orda alle calcagna un
      vicolo cieco è una condanna senza scampo: si sfondano un po' di muri
-     apposta, così si può girare in tondo;
+     apposta, così si può girare in tondo. Vale anche per le camere, che
+     hanno sempre più di una porta;
    - c'è un tempo per il livello. Se i mostri dormono finché non li guardi,
      restare fermi sarebbe una strategia: il tempo che scorre dice che no.
 
@@ -18,7 +29,7 @@
    svegliano mezzo quartiere: è la ragione per cui vale la pena avere armi
    diverse invece della più forte.
 
-   Difficoltà: labirinto uguale, mostri più numerosi e più veloci, tipi nuovi
+   Difficoltà: dungeon uguale, mostri più numerosi e più veloci, tipi nuovi
    che si aggiungono ai vecchi, meno tempo e un boss ogni cinque livelli. La
    velocità segue la regola della suite (`opponentSpeedRatio`).
 
@@ -32,11 +43,21 @@ var PASSO = 1 / 60;      // s: passo fisso di simulazione
 var VITE = 3;
 var VEL = 142;           // px/s del giocatore: il metro di tutto il resto
 var RAGGIO = 8;
-var TOP = 60;            // striscia dell'HUD, sopra il labirinto
+var TOP = 60;            // striscia dell'HUD, sopra il dungeon
 var CELLA = 40;          // lato della cella
 var MURO = 6;            // spessore dei muri: il corridoio libero è CELLA - MURO
 var COLS = 9, RIGHE = 12;
 var VICOLI_APERTI = 0.75;  // quota di vicoli ciechi sfondati: servono gli anelli
+/* Le camere del dungeon: quante, quanto grandi (in celle), quanto campo
+   possono occupare in tutto e quante porte hanno. Il tetto conta più del
+   numero: senza, quattro camere da 4×4 lasciavano quattro corridoi in croce e
+   il campo tornava piatto — nessun posto dove infilarsi, che è il motivo per
+   cui i corridoi ci sono. Un terzo del campo a camere e due terzi a corridoi
+   tiene insieme le due cose. */
+var STANZE_MIN = 3, STANZE_MAX = 5;
+var LATO_MIN = 2, LATO_MAX = 4;
+var CELLE_STANZE = 36;     // celle in camera al massimo, su 108
+var PORTE_MIN = 2, PORTE_MAX = 3;
 
 /* Le armi. La pistola non finisce mai: restare senza niente da sparare sarebbe
    una punizione senza rimedio, non una difficoltà. `rumore` è il raggio entro
@@ -92,7 +113,7 @@ function config(level) {
     vista: 1 + level * 0.055,
     vitaBoss: 22 + level * 2,
     /* Il tempo è la pressione del gioco: senza, con i mostri che dormono si
-       potrebbe pulire il labirinto con tutta calma. Va commisurato a quanti
+       potrebbe pulire il dungeon con tutta calma. Va commisurato a quanti
        mostri ci sono da trovare, non deciso a occhio: un livello con il doppio
        dei mostri e lo stesso tempo non è più difficile, è impossibile. */
     /* Il boss è una spugna: senza secondi in più il livello con il boss non è
@@ -110,18 +131,21 @@ TG.registry.register({
   id: 'orda',
   title: 'Orda',
   icon: '👾',
-  tagline: 'Labirinto pieno di mostri: dormono finché non li guardi.',
+  tagline: 'Dungeon pieno di mostri: dormono finché non li guardi.',
   scoreLabel: 'Punti',
   controls: 'joystick',
   viewport: { w: COLS * CELLA, h: TOP + RIGHE * CELLA },
-  howto: '<b>Comandi:</b> la leva (o frecce/WASD) per muoverti nel labirinto. ' +
+  howto: '<b>Comandi:</b> la leva (o frecce/WASD) per muoverti nel dungeon. ' +
     '<b>Si spara da soli</b>, sempre verso il mostro più vicino che hai in ' +
     'vista. I mostri <b>stanno fermi finché non ti vedono</b>: li riconosci ' +
-    'perché sono spenti e a occhi chiusi. Una volta svegli ti inseguono per i ' +
-    'corridoi, e tornano a dormire se ti perdono di vista. Anche <b>sparare fa ' +
+    'perché sono spenti e a occhi chiusi, e <b>si radunano nelle camere</b> — ' +
+    'le stanze aperte, col pavimento più chiaro. Là dentro ti vedono da lontano ' +
+    'e si svegliano in gruppo: entrarci è una scelta, i corridoi stretti sono ' +
+    'il posto dove affrontarli uno alla volta. Una volta svegli ti inseguono, ' +
+    'e tornano a dormire se ti perdono di vista. Anche <b>sparare fa ' +
     'rumore</b> e sveglia chi è vicino: il laser quasi niente, i razzi mezzo ' +
-    'labirinto. Passa sopra le <b>casse</b> per cambiare arma e sui <b>cuori</b> ' +
-    'per una vita. Il livello è superato quando il labirinto è ripulito, prima ' +
+    'dungeon. Passa sopra le <b>casse</b> per cambiare arma e sui <b>cuori</b> ' +
+    'per una vita. Il livello è superato quando il dungeon è ripulito, prima ' +
     'che scada il tempo. Ogni cinque livelli arriva un boss.',
 
   levelInfo: function (level) {
@@ -135,7 +159,7 @@ TG.registry.register({
     var W = api.width, H = api.height;
 
     /* Generatore con seme: due partite con lo stesso seme e gli stessi comandi
-       sono la stessa partita, labirinto compreso. È mulberry32. */
+       sono la stessa partita, dungeon compreso. È mulberry32. */
     var seme = (Math.random() * 4294967296) >>> 0;
     var rng = null;
 
@@ -153,12 +177,13 @@ TG.registry.register({
     function rpick(arr) { return arr[Math.floor(rng() * arr.length)]; }
 
     var cfg, me, vite, arma, colpi, ricarica, angolo, timeLeft;
-    var nord, ovest, campo;          // labirinto e mappa delle distanze
+    var nord, ovest, campo;          // dungeon e mappa delle distanze
+    var stanze, inStanza, raduno;    // camere, a quale camera appartiene la cella
     var nemici, palle, palleNemiche, casse, avvisi, scoppi, note;
     var ondata, coda, attesaSpawn, pausaOndata, uccisi, acc, finito, scossa;
     var prossimoId, ricalcolo;
 
-    /* ---------- labirinto ---------- */
+    /* ---------- dungeon ---------- */
 
     function cellaDi(x, y) {
       return {
@@ -189,6 +214,158 @@ TG.registry.register({
     }
     var DR = [-1, 0, 1, 0], DC = [0, 1, 0, -1];
 
+    /* Il dungeon: prima le camere, poi i corridoi nello spazio che avanza.
+
+       Il campo era un labirinto e basta, tutto corridoi larghi una cella. Ci si
+       incontrava sempre uno o due mostri alla volta, in fila indiana: la vista
+       non arrivava mai oltre l'angolo, quindi un'orda non si formava proprio. Le
+       camere servono a quello — sono lo spazio in cui i mostri si accumulano e
+       ti vengono addosso insieme, ed è lì che le armi ad area hanno senso.
+
+       Le camere restano staccate di almeno una cella: attaccate si fonderebbero
+       in un salone unico, e il campo tornerebbe piatto per il motivo opposto. */
+    function piazzaStanze() {
+      var r, c;
+      stanze = [];
+      inStanza = [];
+      for (r = 0; r < RIGHE; r++) { inStanza.push([]); for (c = 0; c < COLS; c++) inStanza[r].push(-1); }
+
+      var quante = ri(STANZE_MIN, STANZE_MAX), occupate = 0;
+      for (var tent = 0; tent < 90 && stanze.length < quante; tent++) {
+        var h = ri(LATO_MIN, LATO_MAX), w = ri(LATO_MIN, LATO_MAX);
+        if (occupate + w * h > CELLE_STANZE) continue;
+        var r0 = ri(0, RIGHE - h), c0 = ri(0, COLS - w);
+        var libero = true;
+        for (r = r0 - 1; r <= r0 + h && libero; r++) {
+          for (c = c0 - 1; c <= c0 + w; c++) {
+            if (!dentroGriglia(r, c)) continue;
+            if (inStanza[r][c] >= 0) { libero = false; break; }
+          }
+        }
+        if (!libero) continue;
+        var idx = stanze.length;
+        for (r = r0; r < r0 + h; r++) {
+          for (c = c0; c < c0 + w; c++) inStanza[r][c] = idx;
+        }
+        stanze.push({ r0: r0, c0: c0, w: w, h: h });
+        occupate += w * h;
+      }
+    }
+
+    /* Corridoi: lo stesso scavo all'indietro di prima, ma solo fuori dalle
+       camere. Le camere spezzano lo spazio libero in più pezzi, quindi si
+       riparte da ogni cella non ancora scavata: i pezzi si uniscono dopo, con
+       le porte e con il collegamento finale. */
+    function scavaCorridoi() {
+      var r, c, visto = [];
+      for (r = 0; r < RIGHE; r++) { visto.push([]); for (c = 0; c < COLS; c++) visto[r].push(false); }
+
+      function libera(rr, cc) {
+        return dentroGriglia(rr, cc) && inStanza[rr][cc] < 0 && !visto[rr][cc];
+      }
+
+      for (r = 0; r < RIGHE; r++) {
+        for (c = 0; c < COLS; c++) {
+          if (!libera(r, c)) continue;
+          visto[r][c] = true;
+          var pila = [{ r: r, c: c }];
+          while (pila.length) {
+            var cur = pila[pila.length - 1];
+            var scelte = [];
+            for (var d = 0; d < 4; d++) {
+              if (libera(cur.r + DR[d], cur.c + DC[d])) scelte.push(d);
+            }
+            if (!scelte.length) { pila.pop(); continue; }
+            var dir = rpick(scelte);
+            apri(cur.r, cur.c, dir);
+            var pr = cur.r + DR[dir], pc = cur.c + DC[dir];
+            visto[pr][pc] = true;
+            pila.push({ r: pr, c: pc });
+          }
+        }
+      }
+    }
+
+    /* Dentro la camera non c'è niente: si tolgono tutti i muri interni. */
+    function svuotaStanze() {
+      stanze.forEach(function (s) {
+        for (var r = s.r0; r < s.r0 + s.h; r++) {
+          for (var c = s.c0; c < s.c0 + s.w; c++) {
+            if (c + 1 < s.c0 + s.w) apri(r, c, 1);
+            if (r + 1 < s.r0 + s.h) apri(r, c, 2);
+          }
+        }
+      });
+    }
+
+    /* Le porte. Due o tre per camera e su lati diversi, perché una camera con
+       una porta sola è un vicolo cieco grande: ci si entra per stanare i mostri
+       e si esce dalla stessa apertura, con l'orda in mezzo. */
+    function apriPorte() {
+      stanze.forEach(function (s, idx) {
+        var perDirezione = [[], [], [], []];
+        for (var r = s.r0; r < s.r0 + s.h; r++) {
+          for (var c = s.c0; c < s.c0 + s.w; c++) {
+            for (var d = 0; d < 4; d++) {
+              var nr = r + DR[d], nc = c + DC[d];
+              if (!dentroGriglia(nr, nc) || inStanza[nr][nc] === idx) continue;
+              perDirezione[d].push({ r: r, c: c, d: d });
+            }
+          }
+        }
+        var lati = [0, 1, 2, 3].filter(function (d) { return perDirezione[d].length; });
+        // si mescolano i lati e si prende una porta per lato: così sono sparse
+        for (var i = lati.length - 1; i > 0; i--) {
+          var j = ri(0, i);
+          var t = lati[i]; lati[i] = lati[j]; lati[j] = t;
+        }
+        var quante = Math.min(lati.length, ri(PORTE_MIN, PORTE_MAX));
+        for (var k = 0; k < quante; k++) {
+          var p = rpick(perDirezione[lati[k]]);
+          apri(p.r, p.c, p.d);
+        }
+      });
+    }
+
+    /* Rete unica: le camere possono aver tagliato fuori un pezzo di corridoio,
+       e un mostro chiuso in una sacca renderebbe il livello impossibile da
+       finire. Si aprono muri fra il raggiunto e il non raggiunto finché non
+       resta niente fuori. */
+    function collegaTutto() {
+      var r, c, d;
+      for (var giro = 0; giro < RIGHE * COLS; giro++) {
+        var visto = [];
+        for (r = 0; r < RIGHE; r++) { visto.push([]); for (c = 0; c < COLS; c++) visto[r].push(false); }
+        var coda2 = [{ r: 0, c: 0 }], testa = 0, quanti = 1;
+        visto[0][0] = true;
+        while (testa < coda2.length) {
+          var cur = coda2[testa++];
+          for (d = 0; d < 4; d++) {
+            if (chiuso(cur.r, cur.c, d)) continue;
+            var nr = cur.r + DR[d], nc = cur.c + DC[d];
+            if (!dentroGriglia(nr, nc) || visto[nr][nc]) continue;
+            visto[nr][nc] = true; quanti++;
+            coda2.push({ r: nr, c: nc });
+          }
+        }
+        if (quanti === RIGHE * COLS) return;
+        var ponti = [];
+        for (r = 0; r < RIGHE; r++) {
+          for (c = 0; c < COLS; c++) {
+            if (!visto[r][c]) continue;
+            for (d = 0; d < 4; d++) {
+              var vr = r + DR[d], vc = c + DC[d];
+              if (!dentroGriglia(vr, vc) || visto[vr][vc]) continue;
+              ponti.push({ r: r, c: c, d: d });
+            }
+          }
+        }
+        if (!ponti.length) return;          // non può succedere, ma non si cicla
+        var scelto = rpick(ponti);
+        apri(scelto.r, scelto.c, scelto.d);
+      }
+    }
+
     function generaLabirinto() {
       var r, c;
       nord = []; ovest = [];
@@ -201,31 +378,18 @@ TG.registry.register({
         for (c = 0; c <= COLS; c++) ovest[r].push(true);
       }
 
-      // scavo all'indietro: labirinto perfetto, ogni cella raggiungibile
-      var visto = [];
-      for (r = 0; r < RIGHE; r++) { visto.push([]); for (c = 0; c < COLS; c++) visto[r].push(false); }
-      var pila = [{ r: ri(0, RIGHE - 1), c: ri(0, COLS - 1) }];
-      visto[pila[0].r][pila[0].c] = true;
-      while (pila.length) {
-        var cur = pila[pila.length - 1];
-        var scelte = [];
-        for (var d = 0; d < 4; d++) {
-          var nr = cur.r + DR[d], nc = cur.c + DC[d];
-          if (dentroGriglia(nr, nc) && !visto[nr][nc]) scelte.push(d);
-        }
-        if (!scelte.length) { pila.pop(); continue; }
-        var dir = rpick(scelte);
-        apri(cur.r, cur.c, dir);
-        var pr = cur.r + DR[dir], pc = cur.c + DC[dir];
-        visto[pr][pc] = true;
-        pila.push({ r: pr, c: pc });
-      }
+      piazzaStanze();
+      scavaCorridoi();
+      svuotaStanze();
+      apriPorte();
 
-      /* Sfondamento dei vicoli ciechi: un labirinto perfetto è una trappola
+      /* Sfondamento dei vicoli ciechi: un corridoio senza uscita è una trappola
          quando qualcosa ti insegue, perché ogni fuga finisce contro un muro.
-         Aprendo i vicoli si formano anelli e si può girare in tondo. */
+         Aprendo i vicoli si formano anelli e si può girare in tondo. Le camere
+         non c'entrano: hanno già le loro porte. */
       for (r = 0; r < RIGHE; r++) {
         for (c = 0; c < COLS; c++) {
+          if (inStanza[r][c] >= 0) continue;
           var aperte = [], chiuse = [];
           for (var k = 0; k < 4; k++) {
             var vr = r + DR[k], vc = c + DC[k];
@@ -237,6 +401,8 @@ TG.registry.register({
           }
         }
       }
+
+      collegaTutto();
     }
 
     /* I muri come rettangoli, per le collisioni. Si guardano solo quelli
@@ -355,7 +521,7 @@ TG.registry.register({
       timeLeft = cfg.tempo;
       nemici = []; palle = []; palleNemiche = []; casse = [];
       avvisi = []; scoppi = []; note = [];
-      ondata = 0; coda = []; attesaSpawn = 0; pausaOndata = 0.5;
+      ondata = 0; coda = []; attesaSpawn = 0; pausaOndata = 0.5; raduno = -1;
       uccisi = 0; acc = 0; finito = false; scossa = 0; prossimoId = 1;
       ricalcolo = 0;
       ricalcolaCampo();
@@ -393,6 +559,7 @@ TG.registry.register({
       ondata += 1;
       var quanti = cfg.perOndata + ondata;
       coda = [];
+      raduno = -1;                  // ogni ondata si raduna in una camera nuova
       if (cfg.boss && ondata === cfg.ondate) {
         coda.push('boss');
         quanti = Math.round(quanti / 2);
@@ -408,11 +575,17 @@ TG.registry.register({
 
     /* Un mostro compare in una cella lontana e fuori dalla tua vista: comparire
        davanti al naso sarebbe un dado truccato, e comparire dove stai guardando
-       toglierebbe il senso ai mostri che dormono. */
+       toglierebbe il senso ai mostri che dormono.
+
+       Fra le celle buone si preferiscono le camere, e dentro l'ondata si torna
+       sulla stessa: è quello che trasforma i mostri in un'orda invece che in una
+       fila di incontri. Sparpagliarli uno per corridoio li rendeva innocui e
+       allungava solo la caccia finale. Un quarto delle volte si cambia camera
+       lo stesso, altrimenti basterebbe pulire una stanza per stare tranquilli. */
     function cellaLontana() {
-      var migliori = [];
-      for (var r = 0; r < RIGHE; r++) {
-        for (var c = 0; c < COLS; c++) {
+      var migliori = [], r, c;
+      for (r = 0; r < RIGHE; r++) {
+        for (c = 0; c < COLS; c++) {
           if (campo[r][c] < 4) continue;
           var p = centro(r, c);
           if (Math.hypot(p.x - me.x, p.y - me.y) < 110) continue;
@@ -420,13 +593,22 @@ TG.registry.register({
           migliori.push({ r: r, c: c });
         }
       }
-      if (!migliori.length) {                 // labirinto piccolo o giocatore in mezzo
+      if (!migliori.length) {                 // campo piccolo o giocatore in mezzo
         for (r = 0; r < RIGHE; r++) {
           for (c = 0; c < COLS; c++) if (campo[r][c] >= 3) migliori.push({ r: r, c: c });
         }
       }
       if (!migliori.length) return { r: 0, c: 0 };
-      return rpick(migliori);
+
+      // uno su sei nasce nei corridoi lo stesso: se l'orda fosse *tutta* nelle
+      // camere, il resto del campo sarebbe una passeggiata garantita
+      var inCamera = rng() < 0.84 ? migliori.filter(function (p) { return inStanza[p.r][p.c] >= 0; }) : [];
+      if (!inCamera.length) return rpick(migliori);
+      var stessa = inCamera.filter(function (p) { return inStanza[p.r][p.c] === raduno; });
+      if (stessa.length && rng() < 0.75) return rpick(stessa);
+      var scelta = rpick(inCamera);
+      raduno = inStanza[scelta.r][scelta.c];
+      return scelta;
     }
 
     function creaNemico(tipo, x, y) {
@@ -778,7 +960,7 @@ TG.registry.register({
       }
 
       /* Qui c'era un «finale»: negli ultimi trenta secondi si svegliava tutto
-         il labirinto, per non lasciare la coda del livello a una caccia al
+         il dungeon, per non lasciare la coda del livello a una caccia al
          mostro rimasto in un angolo. Tolto, perché rompeva la regola più
          importante della suite: con la mira automatica e i mostri che ti
          vengono incontro, restare immobili diventava una strategia vincente —
@@ -791,7 +973,7 @@ TG.registry.register({
         finito = true;
         api.gameOver({
           message: 'Tempo scaduto con ' + (nemici.length + coda.length) +
-            ' mostri ancora nel labirinto.'
+            ' mostri ancora nel dungeon.'
         });
         return;
       }
@@ -833,6 +1015,20 @@ TG.registry.register({
     function disegnaLabirinto(ctx) {
       ctx.fillStyle = '#0b1220';
       ctx.fillRect(0, TOP, W, H - TOP);
+
+      /* Il pavimento delle camere è appena più chiaro: senza, uno spazio aperto
+         si legge solo dai muri che non ci sono, e a colpo d'occhio non si
+         capisce dove si sta per finire. */
+      stanze.forEach(function (s) {
+        var x = s.c0 * CELLA + MURO / 2, y = TOP + s.r0 * CELLA + MURO / 2;
+        var w = s.w * CELLA - MURO, h = s.h * CELLA - MURO;
+        ctx.fillStyle = '#18263c';
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = 'rgba(56,189,248,0.10)';   // un filo di bordo: si legge dove finisce
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      });
+
       ctx.strokeStyle = 'rgba(255,255,255,0.03)';
       ctx.lineWidth = 1;
       for (var c = 1; c < COLS; c++) {
@@ -1037,7 +1233,7 @@ TG.registry.register({
     }
 
     function state() {
-      /* Il labirinto sta tutto sullo schermo, quindi darlo qui non regala
+      /* Il dungeon sta tutto sullo schermo, quindi darlo qui non regala
          niente a nessuno: i test e i bot vedono quello che vedi tu. `passaggi`
          è una maschera per cella — bit 0 nord, 1 est, 2 sud, 3 ovest. */
       var passaggi = [];
@@ -1054,6 +1250,8 @@ TG.registry.register({
         seme: seme,
         griglia: { cols: COLS, righe: RIGHE, cella: CELLA, top: TOP, muro: MURO },
         passaggi: passaggi,
+        // le camere si vedono a schermo: darle qui non regala niente ai bot
+        stanze: stanze.map(function (s) { return { r0: s.r0, c0: s.c0, w: s.w, h: s.h }; }),
         giocatore: { x: me.x, y: me.y, invuln: Math.max(0, me.invuln) },
         vite: vite,
         arma: arma,
@@ -1077,7 +1275,7 @@ TG.registry.register({
 
     /* Il seme si può imporre dall'esterno (va messo prima di start): lo usano i
        test per rigiocare la stessa partita, e sarebbe il perno di una sfida in
-       cui due persone affrontano lo stesso labirinto. */
+       cui due persone affrontano lo stesso dungeon. */
     function setSeme(v) { seme = v >>> 0; }
 
     return { start: start, update: update, draw: draw, state: state, setSeme: setSeme };
