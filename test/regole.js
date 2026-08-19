@@ -59,33 +59,53 @@ console.log('\n[mattoni: tipi di mattone]');
     }
     return seen;
   };
-  const l1 = kindsAt(1), l3 = kindsAt(3), l6 = kindsAt(6);
+  const l1 = kindsAt(1), l3 = kindsAt(3), l6 = kindsAt(6), l11 = kindsAt(11);
   check('al livello 1 il muro è tutto normale', Object.keys(l1).length === 0, Object.keys(l1).join(','));
   check('turbo e impazziti compaiono entro il livello 3', l3.turbo && l3.matto, Object.keys(l3).join(','));
-  check('i fantasma non compaiono prima del livello 4', !l3.fantasma, Object.keys(l3).join(','));
-  check('corazzati e fantasma arrivano più avanti', l6.corazzato && l6.fantasma, Object.keys(l6).join(','));
+  check('i corazzati arrivano più avanti', l6.corazzato, Object.keys(l6).join(','));
+  check('i fantasma non compaiono fino all\'11°', !l11.fantasma, Object.keys(l11).join(','));
 
-  /* Il fantasma è l'effetto più duro: deve entrare in punta di piedi. Si
-     controlla che al quinto livello sia raro e breve, e che cresca piano. */
-  const quotaFantasma = (level) => {
-    let visti = 0, muri = 0;
+  /* Il fantasma è l'effetto più duro, e non è una quota del muro ma un numero:
+     uno dal 12° livello in su, zero prima. Era una probabilità per mattone, e
+     una probabilità non sa contare — al 9° lo stesso 5% dava un muro con un
+     fantasma e il successivo con otto. Qui si contano davvero, su tanti muri:
+     una quota mascherata da tetto salterebbe fuori come una media giusta con un
+     massimo sbagliato. */
+  const contaFantasmi = (level) => {
+    let min = Infinity, max = 0, somma = 0;
     for (let i = 0; i < 60; i++) {
-      const s = makeGame(def, util, level).game.state();
-      visti += s.speciali.fantasma || 0;
-      muri += s.bricks;
+      const n = makeGame(def, util, level).game.state().speciali.fantasma || 0;
+      somma += n;
+      if (n < min) min = n;
+      if (n > max) max = n;
     }
-    return visti / muri;
+    return { min, max, media: somma / 60 };
   };
-  const q5 = quotaFantasma(5), q12 = quotaFantasma(12);
-  check('al quinto livello i fantasma sono pochi', q5 > 0 && q5 < 0.06,
-    (q5 * 100).toFixed(1) + '% del muro');
-  check('e diventano più frequenti solo salendo', q12 > q5,
-    (q5 * 100).toFixed(1) + '% -> ' + (q12 * 100).toFixed(1) + '%');
+  const f11 = contaFantasmi(11), f12 = contaFantasmi(12), f20 = contaFantasmi(20);
+  check('fino all\'11° nel muro non ce n\'è nessuno', f11.max === 0, 'al massimo ' + f11.max);
+  check('dal 12° ce n\'è esattamente uno', f12.min === 1 && f12.max === 1,
+    'da ' + f12.min + ' a ' + f12.max);
+  check('e resta uno anche ai livelli alti', f20.min === 1 && f20.max === 1,
+    'da ' + f20.min + ' a ' + f20.max + ' al 20°');
 
-  const durata5 = makeGame(def, util, 5).game.state().ghostTime;
+  /* Il fantasma non sta nelle ultime due file: laggiù si romperebbe spesso per
+     ultimo, con la pallina che diventa invisibile a muro quasi finito. */
+  {
+    let inBasso = 0, muri = 0;
+    for (let i = 0; i < 60; i++) {
+      const g = makeGame(def, util, 14);
+      const s = g.game.state();
+      muri++;
+      if (s.fantasmaRiga != null && s.fantasmaRiga >= s.righe - 2) inBasso++;
+    }
+    check('e non sta nelle due file di sotto', inBasso === 0,
+      inBasso + ' muri su ' + muri + ' col fantasma in fondo');
+  }
+
   const durata12 = makeGame(def, util, 12).game.state().ghostTime;
-  check('anche le sparizioni durano meno all\'inizio', durata5 < durata12,
-    durata5 + 's -> ' + durata12 + 's');
+  const durata20 = makeGame(def, util, 20).game.state().ghostTime;
+  check('le sparizioni durano meno alla prima comparsa', durata12 < durata20,
+    durata12 + 's -> ' + durata20 + 's');
 
   /* Effetto turbo: con un giocatore che tiene la pallina in gioco, prima o poi
      cade un mattone turbo e la velocità supera quella del livello. */

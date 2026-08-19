@@ -14,8 +14,16 @@ var COMBO_MAX = 5;      // oltre questo il moltiplicatore non cresce più
    contenuta e un tetto più basso: resta una scelta che pesa, non una condanna. */
 var TURBO_BOOST = 1.10; // quanto accelera la pallina un mattone turbo
 /* Il fantasma è l'effetto più duro del gioco: sommato alla velocità che cresce
-   rende i livelli alti feroci. Entra quindi in punta di piedi — pochi mattoni e
-   sparizioni brevi al quinto livello — e cresce piano da lì in avanti. */
+   rende i livelli alti feroci. Per questo non è più una quota del muro ma un
+   numero: **uno**, e solo dal livello 12 in su.
+
+   Prima era una probabilità per mattone, e una probabilità non sa contare: al
+   nono livello lo stesso 5% produceva un muro con un fantasma e il successivo
+   con otto: la partita più dura che il gioco sappia costruire, decisa dal
+   sorteggio invece che da come giochi. Uno solo, e solo dove la pallina corre
+   davvero, lo rende quello che doveva essere — un mattone che si guarda e si
+   decide se rompere, non un dado. */
+var FANTASMA_DA = 12;     // primo livello con un fantasma nel muro
 var GHOST_TIME_MIN = 5;   // s di intermittenza alla prima comparsa
 var GHOST_TIME_MAX = 10;  // s a cui arriva ai livelli alti
 var GHOST_ON = 0.32;    // s visibile in ogni ciclo di lampeggio
@@ -40,8 +48,10 @@ function config(level) {
     armored: level >= 5 ? Math.min(0.12 + (level - 5) * 0.07, 0.55) : 0, // quota a 2 colpi
     turbo: level >= 2 ? Math.min(0.10 + (level - 2) * 0.03, 0.30) : 0,   // accelerano la pallina
     matto: level >= 3 ? Math.min(0.08 + (level - 3) * 0.03, 0.28) : 0,   // rimbalzo a caso
-    fantasma: level >= 5 ? Math.min(0.025 + (level - 5) * 0.012, 0.11) : 0, // pallina a intermittenza
-    ghostTime: Math.min(GHOST_TIME_MIN + Math.max(0, level - 5) * 0.6, GHOST_TIME_MAX),
+    /* Quanti fantasma nel muro: uno dal 12° in su, nessuno prima. È un conteggio,
+       non una quota — un tetto su una probabilità resterebbe un dado. */
+    fantasmi: level >= FANTASMA_DA ? 1 : 0,
+    ghostTime: Math.min(GHOST_TIME_MIN + Math.max(0, level - FANTASMA_DA) * 0.6, GHOST_TIME_MAX),
     /* Quanto può sbandare la pallina su un mattone impazzito. Cresce con il
        livello: più avanti vai, meno il rimbalzo somiglia a un rimbalzo. */
     mattoAngle: Math.min(1.3 + level * 0.06, 2),
@@ -65,9 +75,10 @@ TG.registry.register({
     'Le vite valgono per tutta la partita: ne guadagni una ogni 3 livelli. ' +
     '<b>Mattoni speciali:</b> quelli scuri reggono due colpi, i <b>turbo</b> (»») ' +
     'accelerano la pallina per tutto il livello, gli <b>impazziti</b> (?) la ' +
-    'rimandano a un angolo qualsiasi, i <b>fantasma</b> (◌) la fanno sparire a ' +
-    'intermittenza per qualche secondo (pochi e brevi dal quinto livello, ' +
-    'sempre di più andando avanti). Valgono metà punti in più, ma cambiano ' +
+    'rimandano a un angolo qualsiasi, e il <b>fantasma</b> (◌) la fa sparire a ' +
+    'intermittenza per qualche secondo. Di fantasma ce n\'è <b>uno solo per ' +
+    'muro, e solo dal 12° livello in su</b>: sai che c\'è, lo vedi, e decidi se ' +
+    'romperlo. Valgono metà punti in più, ma cambiano ' +
     'la partita: romperli con la combo alta è redditizio, romperli quando la ' +
     'pallina già corre è come darsi una zappata sui piedi. ' +
     '<b>Combo:</b> ogni mattone rotto senza tornare sulla racchetta vale di più ' +
@@ -80,11 +91,11 @@ TG.registry.register({
     if (c.armored) speciali.push('corazzati');
     if (c.turbo) speciali.push('turbo');
     if (c.matto) speciali.push('impazziti');
-    if (c.fantasma) speciali.push('fantasma');
+    if (c.fantasmi) speciali.push('un fantasma');
     return 'Livello ' + level + ': ' + c.rows + ' file, pallina a ' +
       Math.round(c.ballSpeed) + ' px/s' +
       (speciali.length ? ', mattoni ' + speciali.join(' e ') : '') +
-      (c.fantasma ? ' (sparizioni da ' + c.ghostTime.toFixed(0) + 's)' : '') +
+      (c.fantasmi ? ' (sparizioni da ' + c.ghostTime.toFixed(0) + 's)' : '') +
       ' · mattone ' + c.brickPoints + ' pt, tocco di racchetta −' + c.paddleMalus;
   },
 
@@ -114,17 +125,16 @@ TG.registry.register({
        supererebbero il muro intero, quindi vengono riscalate: sotto una certa
        soglia devono restare mattoni normali, altrimenti non c'è più partita. */
     function pickKind() {
-      var a = cfg.armored, t = cfg.turbo, m = cfg.matto, f = cfg.fantasma;
-      var tot = a + t + m + f;
+      var a = cfg.armored, t = cfg.turbo, m = cfg.matto;
+      var tot = a + t + m;
       if (tot > SPECIAL_CAP) {
         var k = SPECIAL_CAP / tot;
-        a *= k; t *= k; m *= k; f *= k;
+        a *= k; t *= k; m *= k;
       }
       var r = Math.random();
       if (r < a) return 'corazzato';
       if (r < a + t) return 'turbo';
       if (r < a + t + m) return 'matto';
-      if (r < a + t + m + f) return 'fantasma';
       return 'normale';
     }
 
@@ -145,6 +155,30 @@ TG.registry.register({
             alive: true
           });
         }
+      }
+      piazzaFantasmi();
+    }
+
+    /* Il fantasma si mette dopo, prendendo il posto di un mattone qualsiasi:
+       nel muro ce n'è un numero, non una quota, e un numero non si può estrarre
+       mattone per mattone senza tornare a essere un dado.
+
+       Sta fuori dalle due file di sotto. Un fantasma sull'ultima fila si rompe
+       spesso per ultimo, quando resta poco altro da colpire: la pallina diventa
+       invisibile a muro quasi finito, che è il momento in cui l'effetto conta
+       meno e infastidisce di più. */
+    function piazzaFantasmi() {
+      var quanti = cfg.fantasmi;
+      if (!quanti) return;
+      var candidati = bricks.filter(function (b, i) {
+        return Math.floor(i / COLS) < Math.max(1, cfg.rows - 2);
+      });
+      if (!candidati.length) candidati = bricks.slice();
+      while (quanti > 0 && candidati.length) {
+        var b = candidati.splice(api.util.randInt(0, candidati.length - 1), 1)[0];
+        b.kind = 'fantasma';
+        b.hp = 1;
+        quanti -= 1;
       }
     }
 
@@ -450,8 +484,17 @@ TG.registry.register({
     }
 
     function state() {
+      /* La fila del fantasma serve al test che verifica dove viene messo: senza,
+         «non sta in fondo» resterebbe un'intenzione scritta in un commento. */
+      var fRiga = null;
+      for (var i = 0; i < bricks.length; i++) {
+        if (bricks[i].kind !== 'fantasma') continue;
+        fRiga = Math.round((bricks[i].y - TOP) / (BRICK_H + GAP));
+        break;
+      }
       return {
         lives: lives, bricks: remaining(), combo: combo, launched: launched,
+        righe: cfg.rows, fantasmaRiga: fRiga,
         speed: Math.round(Math.hypot(ball.vx, ball.vy)),
         ghost: Math.round(ghostLeft * 10) / 10,
         ghostTime: cfg.ghostTime,

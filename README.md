@@ -11,7 +11,7 @@ da `file://`) e giochi.
 | 🐍 **Serpente** | Snake a griglia | Più velocità, più bocconi richiesti, bordi mortali e ostacoli dal livello 3 |
 | 🏓 **Pong CPU** | Uno contro uno con avversario simulato | La CPU è più rapida e sbaglia meno la mira, pallina più veloce, racchetta più corta. Durante il set **entrambe** le racchette si accorciano |
 | 🧠 **Memoria** | Ripeti la sequenza luminosa | Da 4 a 9 riquadri, sequenze più lunghe, riproduzione più rapida, tempo limite per tocco |
-| 🧱 **Mattoni** | Breakout con combo e mattoni speciali | Più file, mattoni turbo dal 2° livello, impazziti dal 3°, corazzati dal 5°; le vite valgono per tutta la partita |
+| 🧱 **Mattoni** | Breakout con combo e mattoni speciali | Più file, mattoni turbo dal 2° livello, impazziti dal 3°, corazzati dal 5°, un fantasma (uno solo) dal 12°; le vite valgono per tutta la partita |
 | 🏒 **Air Hockey** | Tavolo ad aria contro la CPU | Il portiere avversario copre meglio la porta, rientra più in fretta dopo il tiro, la sua porta si restringe |
 | 🐹 **Talpe** | Whack a mole a tempo | Restano fuori sempre meno (1,5s al 1° livello, 0,4s al 9°) e sono più numerose; bombe dal 3°, grigie come le talpe e col grigio ogni tanto scambiato: conta solo la miccia |
 | 🔴 **Forza 4** | Quattro di fila, vs CPU o in due | La CPU guarda sempre più mosse avanti (minimax) e smette di svarionare |
@@ -39,15 +39,24 @@ In **Mattoni** i punti seguono la mira: ogni mattone rotto senza tornare sulla
 racchetta vale di più (fino a ×5), mentre ogni tocco di racchetta toglie punti e
 azzera il moltiplicatore. Il muro poi non è tutto uguale: i mattoni **turbo**
 (»») accelerano la pallina per il resto del livello, gli **impazziti** (?) la
-rimandano a un angolo qualsiasi, i **fantasma** (◌) la fanno sparire a
-intermittenza, i **corazzati** reggono due colpi. I fantasma entrano in punta di
-piedi dal 5° livello — il 2,5% del muro, sparizioni da 5 secondi — e crescono
-piano: sommati alla velocità sono l'effetto più duro del gioco. Valgono metà
-punti in più, ma decidono che partita sarà: la velocità con cui ti ritrovi a
-giocare dipende da quali mattoni hai scelto di rompere. **Pong** e **Mattoni** si giocano solo con i due tasti
-sotto il campo, che si dividono tutta la larghezza disponibile; in **Air Hockey**
-si trascina il dito, e il mazzuolo resta sopra il polpastrello per non finirci
-sotto.
+rimandano a un angolo qualsiasi, il **fantasma** (◌) la fa sparire a
+intermittenza, i **corazzati** reggono due colpi. Valgono metà punti in più, ma
+decidono che partita sarà: la velocità con cui ti ritrovi a giocare dipende da
+quali mattoni hai scelto di rompere.
+
+Il **fantasma è uno solo, e arriva dal 12° livello**. Prima era una quota del
+muro — il 2,5% dal quinto livello, in crescita — e una quota non sa contare: lo
+stesso 5% al nono livello produceva un muro con un fantasma e il successivo con
+otto, cioè la partita più dura che il gioco sappia costruire, decisa dal
+sorteggio invece che da come giochi. Adesso è un numero: zero fino all'11°, uno
+da lì in su, mai nelle due file di sotto (in fondo si romperebbe spesso per
+ultimo, e la pallina diventerebbe invisibile a muro quasi finito, quando
+l'effetto conta meno e infastidisce di più). Sommato alla velocità resta
+l'effetto più duro del gioco, ma ora è un mattone che vedi e decidi se rompere.
+
+**Pong** e **Mattoni** si giocano solo con i due tasti sotto il campo, che si
+dividono tutta la larghezza disponibile; in **Air Hockey** si trascina il dito, e
+il mazzuolo resta sopra il polpastrello per non finirci sotto.
 
 In **Orda** il campo è un **dungeon** visto dall'alto — camere aperte collegate
 da corridoi — e i mostri **stanno fermi finché non ti vedono**: li vedi anche tu,
@@ -230,7 +239,7 @@ Stato attuale (percentuale di livelli vinti dal profilo indicato):
 | Pong CPU · medio | 80% | 53% | 18% | 8% | 5% |
 | Pong CPU · bravo | 98% | 98% | 88% | 78% | 40% |
 | Mattoni · medio | 95% | 25% | 0% | 0% | 0% |
-| Mattoni · bravo | 100% | 100% | 100% | 20% | 0% |
+| Mattoni · bravo | 100% | 100% | 100% | 60% | 3% |
 | Air Hockey · medio | 68% | 18% | 3% | 0% | 0% |
 | Air Hockey · bravo | 98% | 85% | 25% | 0% | 0% |
 | Talpe · medio | 100% | 88% | 35% | 13% | 0% |
@@ -238,6 +247,12 @@ Stato attuale (percentuale di livelli vinti dal profilo indicato):
 | Orda · fermo | 0% | 0% | 0% | 0% | 0% |
 | Orda · medio | 100% | 100% | 93% | 98% | 78% |
 | Orda · bravo | 100% | 100% | 85% | 95% | 85% |
+
+La riga «bravo» di Mattoni è salita al 7° livello — dal 20% al 60% — da quando
+il fantasma non compare più sotto il 12°. È l'effetto che il bot subiva più di
+chiunque: quando la pallina sparisce lui prosegue verso l'ultima posizione nota,
+e ai livelli in cui il muro ne conteneva quattro o cinque quella cecità gli
+costava la partita. Il numero misura la modifica, non un gioco diventato facile.
 
 **Forza 4**, **Tessere** e **Labirinto** non compaiono qui: sono giochi di
 turni, di ragionamento o di orientamento, dove profili basati su riflessi non
