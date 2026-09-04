@@ -41,6 +41,21 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const versione = (await page.textContent('#app-version') || '').trim();
   check('versione mostrata in alto', /^v\d+$/.test(versione), versione || 'vuota');
   check('versione visibile', await page.isVisible('#app-version'));
+  /* Ogni script e il foglio di stile devono portare la versione in coda: è la
+     garanzia che una pagina nuova non giri con file vecchi in cache. È
+     successo — il gioco nuovo c'era, i suoi comandi no. */
+  const agganci = await page.evaluate(() => {
+    const v = document.querySelector('meta[name="versione"]').getAttribute('content');
+    const src = [...document.querySelectorAll('script[src]')].map((s) => s.getAttribute('src'));
+    const css = [...document.querySelectorAll('link[rel="stylesheet"]')].map((l) => l.getAttribute('href'));
+    const tutti = src.concat(css);
+    return { v, tutti: tutti.length, giusti: tutti.filter((u) => u.endsWith('?v=' + v)).length,
+      barra: document.getElementById('app-version').textContent.trim() };
+  });
+  check('script e stile portano la versione in coda', agganci.tutti > 10 && agganci.giusti === agganci.tutti,
+    agganci.giusti + ' su ' + agganci.tutti + ' con ?v=' + agganci.v);
+  check('ed è la stessa versione scritta in barra', agganci.barra === 'v' + agganci.v,
+    agganci.barra + ' contro meta ' + agganci.v);
 
   const canvasHash = () => page.evaluate(() => {
     const c = document.getElementById('canvas');

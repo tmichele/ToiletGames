@@ -149,20 +149,27 @@ guardare una copia vecchia convinti di vedere l'ultima. Il numero in barra
 risponde a colpo d'occhio — se è più basso di quello appena pubblicato, quella
 che si sta guardando è cache, non il sito.
 
-Il numero sta in un posto solo, `assets/js/core/version.js`. **A ogni
-pubblicazione si alza di uno e si aggiorna la data**, nello stesso commit delle
-modifiche che si stanno rilasciando:
+Il numero sta in un posto solo: il `<meta name="versione">` in cima a
+`index.html`. **A ogni pubblicazione si alza di uno e si aggiorna la data**,
+nello stesso commit delle modifiche che si stanno rilasciando:
 
-```js
-TG.versione = {
-  numero: 2,
-  data: '2026-08-18'
-};
+```html
+<meta name="versione" content="6" data-data="2026-08-20">
 ```
 
-Il test di fumo controlla che il numero sia in pagina e visibile anche durante
-una partita, così se il segnale si rompe qualcuno se ne accorge; che sia stato
-alzato, invece, resta un gesto da fare a mano.
+Non è solo un'etichetta. Il foglio di stile e tutti gli script vengono caricati
+con `?v=<numero>` in coda — i tag degli script li scrive un ciclo in fondo a
+`index.html`, leggendo il numero dal meta — quindi una versione nuova **non può
+girare con un file vecchio** rimasto nella cache del browser. È successo: il
+Rally era in pagina (file nuovo, mai stato in cache) ma i suoi comandi no,
+perché `input.js` era ancora quello di prima e non sapeva costruirli. Da
+allora la cache non è più un problema da spiegare all'utente: se il numero in
+barra è quello nuovo, lo sono anche i file.
+
+Il test di fumo controlla tre cose: che il numero sia in pagina e visibile anche
+durante una partita, che ogni script e il foglio di stile portino in coda lo
+stesso numero, e che quel numero sia quello in barra. Che sia stato alzato,
+invece, resta un gesto da fare a mano.
 
 ## Uso
 
@@ -195,10 +202,10 @@ classifica cancella i risultati di quel gioco.
 ## Struttura
 
 ```
-index.html                  guscio della pagina + elenco degli script
+index.html                  guscio della pagina, versione ed elenco degli script
 assets/css/style.css        interfaccia
 assets/js/core/
-  version.js                numero di release mostrato in barra
+  version.js                legge la versione dal meta e la mostra in barra
   util.js                   funzioni di appoggio (random, collisioni, disegno)
   storage.js                localStorage con fallback in memoria
   sfx.js                    effetti sonori sintetizzati (WebAudio) e il motore del rally

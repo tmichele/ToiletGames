@@ -6,8 +6,15 @@
 <meta name="theme-color" content="#0d1117">
 <meta name="description" content="ToiletGames — piccola suite di giochi single player da fare in cinque minuti.">
 <title>ToiletGames</title>
+<!-- La versione sta qui, in un posto solo: a ogni pubblicazione si alza il
+     numero e si aggiorna la data. Il foglio di stile e tutti gli script
+     vengono caricati con ?v=<numero> in coda, quindi una versione nuova non
+     può mai girare con uno script vecchio rimasto nella cache del browser —
+     è successo: il gioco nuovo c'era e i suoi comandi no, perché input.js
+     era quello di prima. -->
+<meta name="versione" content="5" data-data="2026-08-19">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚽</text></svg>">
-<link rel="stylesheet" href="assets/css/style.css">
+<link rel="stylesheet" href="assets/css/style.css?v=5">
 </head>
 <body>
 
@@ -72,30 +79,27 @@
   </div>
 </div>
 
-<script src="assets/js/core/version.js"></script>
-<script src="assets/js/core/util.js"></script>
-<script src="assets/js/core/storage.js"></script>
-<script src="assets/js/core/sfx.js"></script>
-<script src="assets/js/core/profile.js"></script>
-<script src="assets/js/core/scores.js"></script>
-<script src="assets/js/core/registry.js"></script>
-<script src="assets/js/core/input.js"></script>
-<script src="assets/js/core/engine.js"></script>
-<script src="assets/js/core/ui.js"></script>
-
-<!-- Giochi: aggiungere qui una riga per ogni nuovo gioco -->
-<script src="assets/js/games/serpente.js"></script>
-<script src="assets/js/games/pong.js"></script>
-<script src="assets/js/games/memoria.js"></script>
-<script src="assets/js/games/mattoni.js"></script>
-<script src="assets/js/games/hockey.js"></script>
-<script src="assets/js/games/talpe.js"></script>
-<script src="assets/js/games/forza4.js"></script>
-<script src="assets/js/games/tessere.js"></script>
-<script src="assets/js/games/labirinto.js"></script>
-<script src="assets/js/games/orda.js"></script>
-<script src="assets/js/games/rally.js"></script>
-
-<script src="assets/js/core/app.js"></script>
+<script>
+/* Gli script si caricano con la versione in coda (?v=N), letta dal <meta>
+   qui sopra: è quello che impedisce al browser di mescolare una pagina nuova
+   con script vecchi in cache. document.write qui è voluto — inserisce i tag
+   mentre la pagina viene analizzata, in ordine e in modo bloccante, esattamente
+   come se fossero scritti a mano — e resta l'unico modo di farlo senza un
+   passaggio di build. I giochi: aggiungere qui una voce per ogni nuovo gioco,
+   prima di core/app, che legge il registro già popolato. */
+(function () {
+  var v = document.querySelector('meta[name="versione"]').getAttribute('content');
+  [
+    'core/version', 'core/util', 'core/storage', 'core/sfx', 'core/profile',
+    'core/scores', 'core/registry', 'core/input', 'core/engine', 'core/ui',
+    'games/serpente', 'games/pong', 'games/memoria', 'games/mattoni', 'games/hockey',
+    'games/talpe', 'games/forza4', 'games/tessere', 'games/labirinto', 'games/orda',
+    'games/rally',
+    'core/app'
+  ].forEach(function (f) {
+    document.write('<script src="assets/js/' + f + '.js?v=' + v + '"><\/script>');
+  });
+})();
+</script>
 </body>
 </html>

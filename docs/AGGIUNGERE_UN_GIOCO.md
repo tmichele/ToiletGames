@@ -74,15 +74,20 @@ finirebbero nello spazio globale e i giochi si sovrascriverebbero a vicenda.
 
 ## 2. Registrarlo nella pagina
 
-In `index.html`, nella sezione dei giochi:
+In `index.html`, nell'elenco in fondo alla pagina, una voce nuova:
 
-```html
-<script src="assets/js/games/miogioco.js"></script>
+```js
+  'games/orda',
+  'games/miogioco',      // <- qui
+  'core/app'
 ```
 
-Lo script va **prima** di `assets/js/core/app.js`, che legge il registro già
-popolato. Il gioco compare nell'elenco da solo, con card, classifica e
-statistiche.
+I tag `<script>` li scrive quel ciclo, con la versione in coda (`?v=N`, letta
+dal `<meta name="versione">`): è quello che impedisce al browser di caricare
+uno script vecchio dalla cache insieme a una pagina nuova. La voce va
+**prima** di `core/app`, che legge il registro già popolato. Il gioco compare
+nell'elenco da solo, con card, classifica e statistiche. Pubblicando, alza il
+numero nel meta (vedi «Versione» nel README).
 
 ## L'oggetto `api`
 
