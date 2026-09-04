@@ -528,8 +528,10 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   await page.click('.btn:has-text("Gioca")');
   await sleep(300);
   const pedali = await page.$$eval('#touch-controls .guida__btn', (b) => b.map((x) => x.textContent));
-  check('il rally ha sterzo e pedali', pedali.length === 4 && pedali.indexOf('GAS') >= 0 && pedali.indexOf('FRENO') >= 0,
-    pedali.join(' '));
+  check('il rally ha volante e pedali',
+    (await page.$$('#touch-controls .volante')).length === 1 &&
+    pedali.length === 2 && pedali.indexOf('GAS') >= 0 && pedali.indexOf('FRENO') >= 0,
+    'volante + ' + pedali.join(' '));
   const r0 = await page.evaluate(() => TG.engine.inspect().game);
   check('si parte col conto alla rovescia', r0.stato === 'conto' && r0.conto > 0);
   // il colore si sceglie mentre si conta, e resta salvato
@@ -550,6 +552,31 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   check('col gas l\'auto parte', r3.auto.velocita > 100 && percorso > 60,
     Math.round(r3.auto.velocita) + ' px/s, ' + Math.round(percorso) + ' px');
   check('il cronometro scorre', r3.tempo < r2.tempo, r2.tempo + ' -> ' + r3.tempo);
+  /* Il volante si gira col pomello: si trascina lungo la corona e la
+     sterzata deve essere analogica — mezzo giro, mezza sterzata — e l'auto
+     deve girare davvero. Lasciato, torna dritto. */
+  const vb = await (await page.$('.volante')).boundingBox();
+  const vcx = vb.x + vb.width / 2, vcy = vb.y + vb.height / 2, vr = vb.width / 2 - 8;
+  const h0 = (await page.evaluate(() => TG.engine.inspect().game)).auto.h;
+  await page.keyboard.down('ArrowUp');
+  await page.mouse.move(vcx, vcy - vr);
+  await page.mouse.down();
+  for (let a = -90; a <= -35; a += 11) {
+    const t = a * Math.PI / 180;
+    await page.mouse.move(vcx + Math.cos(t) * vr, vcy + Math.sin(t) * vr);
+    await sleep(30);
+  }
+  await sleep(500);
+  const vol = await page.evaluate(() => ({ v: TG.input.volante.valore, attivo: TG.input.volante.attivo, h: TG.engine.inspect().game.auto.h }));
+  await page.mouse.up();
+  await page.keyboard.up('ArrowUp');
+  await sleep(250);
+  const volDopo = await page.evaluate(() => TG.input.volante);
+  check('il volante gira col pomello, a metà corsa', vol.attivo && vol.v > 0.35 && vol.v < 0.85, 'valore ' + vol.v.toFixed(2));
+  let giro = vol.h - h0; while (giro > Math.PI) giro -= 2 * Math.PI; while (giro < -Math.PI) giro += 2 * Math.PI;
+  check('e l\'auto sterza a destra', giro > 0.15, 'muso girato di ' + giro.toFixed(2) + ' rad');
+  check('lasciato, il volante torna dritto', !volDopo.attivo && volDopo.valore === 0);
+
   // e il tasto a schermo fa lo stesso lavoro del tasto freccia
   const gasBtn = await page.$('#touch-controls .guida__btn--gas');
   const gb = await gasBtn.boundingBox();

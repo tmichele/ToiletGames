@@ -110,10 +110,16 @@ stesso livello un tracciato si vinceva con dieci secondi di margine e quello
 dopo era impossibile. Così invece il margine è una scelta di livello: +62% al
 primo, +6% dal decimo. Il pilota simulato di `test/rally-bot.js` segue la stessa
 regola, quindi il tempo richiesto è battibile per costruzione, non per
-speranza. I comandi sono quelli di un'auto — **◀ ▶ sterzano, GAS, FRENO** (che
-da fermo fa retromarcia), a schermo con due pollici e da tastiera con le frecce —
-e il **colore dell'auto** si sceglie durante il conto alla rovescia, con ◀ ▶, i
-tasti 1-9 o un tocco: resta salvato. L'**audio** è metà del gioco: un motore che
+speranza. I comandi sono quelli di un'auto: un **volante** vero, che si gira
+prendendolo dal pomello — ruota di quanto ruota il dito attorno al centro, mezzo
+giro è mezza sterzata, lasciato torna dritto — e i pedali **GAS** e **FRENO**
+(che da fermo fa retromarcia), a schermo con due pollici e da tastiera con le
+frecce. La camera è agganciata al muso: **l'auto sta in basso e punta sempre in
+alto**, il mondo le ruota attorno, e quello che si vede davanti è la curva che
+arriva — con la camera fissa a nord e l'auto al centro, andando verso il basso
+si vedeva solo la strada già fatta. Il **colore dell'auto** si sceglie durante
+il conto alla rovescia, con un giro di volante, i tasti 1-9 o un tocco: resta
+salvato. L'**audio** è metà del gioco: un motore che
 segue i giri con le marce che cambiano, le gomme che slittano quando si scivola,
 il conto alla rovescia, il tonfo contro gli alberi. Il motore è un suono
 continuo, non un effetto: sta in `TG.sfx` (`motoreImposta`), va rinfrescato a
@@ -181,7 +187,7 @@ open index.html            # oppure doppio click sul file
 Funziona anche servito da un web server statico, ma non è necessario.
 
 **Comandi:** frecce o WASD da tastiera, pad e leva a schermo da telefono,
-sterzo e pedali nel rally, trascinamento del dito dove serve, tasti 1-9 per i
+volante e pedali nel rally, trascinamento del dito dove serve, tasti 1-9 per i
 giochi a riquadri. `Esc` o il pulsante ⏸ mettono in pausa.
 
 **Mentre giochi lo schermo è tutto campo e comandi**: niente da scorrere sotto.
@@ -212,7 +218,7 @@ assets/js/core/
   profile.js                nome del giocatore
   scores.js                 classifiche e statistiche per gioco
   registry.js               registro dei giochi + contratto
-  input.js                  tastiera, swipe, puntatore, pad, leva e comandi da guida
+  input.js                  tastiera, swipe, puntatore, pad, leva, volante e pedali
   engine.js                 canvas, ciclo di gioco, livelli, punteggio
   ui.js                     elenco, HUD, classifica, pannelli
   app.js                    avvio e navigazione (#/g/<id>)

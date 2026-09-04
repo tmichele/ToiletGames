@@ -455,45 +455,108 @@ body.is-playing .topbar__word {
 
 .touch-controls--lr .pad { grid-template-rows: 46px; }
 
-/* Comandi da guida: sterzo a sinistra, pedali a destra, tutta la larghezza.
-   I due gruppi stanno agli estremi perché si guida con due pollici, e i
-   pulsanti sono alti quanto quelli grandi del pong: il pollice non guarda. */
+/* Comandi da guida: il volante a sinistra, i pedali a destra, tutta la
+   larghezza. I due gruppi stanno agli estremi perché si guida con due pollici. */
 .touch-controls--guida { display: block; }
 
 .guida {
   display: flex;
   justify-content: space-between;
-  align-items: stretch;
+  align-items: center;
   gap: 16px;
   width: 100%;
 }
 
-.guida__sterzo, .guida__pedali {
+.guida__sterzo { flex: 0 0 auto; }
+
+.guida__pedali {
   display: flex;
+  flex-direction: column;
   gap: 8px;
-  flex: 1 1 0;
+  flex: 1 1 auto;
+  max-width: 170px;
 }
 
-.guida__pedali { flex-direction: column; max-width: 150px; }
-
 .guida__btn {
-  flex: 1 1 0;
-  min-height: 46px;
-  height: 100px;
+  height: 62px;
   background: var(--bg-soft);
   border: 1px solid var(--line);
   border-radius: 14px;
-  font-size: 1.5rem;
+  font-size: 0.9rem;
   font-weight: 700;
+  letter-spacing: 1px;
   cursor: pointer;
   touch-action: none;
 }
 
-.guida__pedali .guida__btn { height: 46px; font-size: 0.8rem; letter-spacing: 1px; }
 .guida__btn--gas { border-color: rgba(74,222,128,0.5); color: var(--accent); }
 .guida__btn--freno { border-color: rgba(248,113,113,0.5); color: var(--bad); }
 .guida__btn:active { background: var(--accent); color: #06210f; }
 .guida__btn--freno:active { background: var(--bad); color: #2a0606; }
+
+/* Il volante: corona, tre razze, mozzo e il pomello sulla corona da cui lo si
+   prende. Ruota tutto insieme; al rilascio rientra al centro con una molla. */
+.volante {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.volante__corona {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 16px solid var(--bg-soft-2);
+  box-shadow: inset 0 0 0 1px var(--line), 0 0 0 1px var(--line);
+  will-change: transform;
+}
+
+.volante__corona.is-rientro { transition: transform 0.18s ease-out; }
+
+.volante__razza {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 52px;
+  margin-left: -7px;
+  margin-top: -52px;
+  transform-origin: 50% 100%;
+  background: var(--bg-soft-2);
+  border-radius: 4px;
+}
+
+.volante__razza--a { transform: rotate(90deg); }
+.volante__razza--b { transform: rotate(210deg); }
+.volante__razza--c { transform: rotate(330deg); }
+
+.volante__mozzo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border-radius: 50%;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+}
+
+.volante__pomello {
+  position: absolute;
+  left: 50%;
+  top: -8px;
+  width: 26px;
+  height: 26px;
+  margin-left: -13px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+}
 
 @media (min-width: 700px) {
   body { max-width: 720px; }

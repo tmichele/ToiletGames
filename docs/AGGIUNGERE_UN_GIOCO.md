@@ -155,6 +155,8 @@ sbagliando:
 - `api.input.pointer` — `{x, y, down}` per trascinamenti (racchette e simili).
 - `api.input.stick` — `{x, y, attiva}` fra -1 e 1: la leva analogica, per i
   giochi in cui si naviga invece di scattare.
+- `api.input.volante` — `{valore, attivo}`: il volante dei comandi `guida`,
+  fra -1 (tutto a sinistra) e 1; lasciato torna a zero da solo.
 
 Le code sono indipendenti e un gesto finisce in **una sola**: un tocco sul campo
 produce solo un tap, uno swipe solo una direzione, il pulsante azione solo
@@ -167,10 +169,11 @@ nello stesso `update`, conviene comunque fermarsi appena lo stato cambia.
 I valori di `controls` decidono i comandi a schermo: `dpad` (croce direzionale),
 `lr` (sinistra/destra piccoli), `lr-big` (due tasti che si dividono tutta la
 larghezza, per i giochi dove serve un bersaglio grande per il pollice),
-`joystick` (leva analogica), `guida` (sterzo ◀ ▶ a sinistra e pedali GAS/FRENO
-a destra: sono le stesse azioni della croce — `left`/`right`, `up`/`down` — ma
-disposte per due pollici, perché guidare vuol dire tenere premuti sterzo e gas
-insieme), `pointer` e `none` (nessun pulsante). Con `actionLabel` valorizzato si aggiunge
+`joystick` (leva analogica), `guida` (un volante a sinistra e i pedali GAS/FRENO
+a destra: i pedali sono `up`/`down` tenuti premuti, il volante è
+`api.input.volante` — `{valore, attivo}`, valore fra -1 e 1, sterzata analogica;
+da tastiera `left`/`right` restano tutto o niente), `pointer` e `none` (nessun
+pulsante). Con `actionLabel` valorizzato si aggiunge
 il pulsante azione.
 
 ## Tarare la difficoltà

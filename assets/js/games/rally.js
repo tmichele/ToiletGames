@@ -259,8 +259,11 @@ TG.registry.register({
   scoreLabel: 'Punti',
   controls: 'guida',
   viewport: { w: 360, h: 480 },
-  howto: '<b>Comandi:</b> ◀ ▶ sterzano, <b>GAS</b> accelera, <b>FRENO</b> frena ' +
-    '(e da fermo fa retromarcia); da tastiera frecce o WASD. ' +
+  howto: '<b>Comandi:</b> il <b>volante</b> si gira prendendolo dal pomello — ' +
+    'mezzo giro è mezza sterzata, lasciato torna dritto — <b>GAS</b> accelera, ' +
+    '<b>FRENO</b> frena (e da fermo fa retromarcia); da tastiera frecce o WASD. ' +
+    'L\'auto sta in basso e punta sempre in alto: quello che vedi davanti è la ' +
+    'strada che arriva. ' +
     '<b>Si vince arrivando prima che scada il tempo</b>: la barra in alto è il ' +
     'cronometro. Il percorso è una striscia d\'asfalto in un prato — <b>fuori ' +
     'strada si striscia</b> e le gomme non tengono, quindi tagliare una curva ' +
@@ -268,7 +271,7 @@ TG.registry.register({
     'ordine: se ne salti una la freccia ti rimanda indietro. L\'auto scivola: ' +
     'frena <i>prima</i> della curva, accelera <i>in uscita</i>. Gli alberi ' +
     'sono duri. <b>Il colore dell\'auto</b> lo scegli durante il conto alla ' +
-    'rovescia: ◀ ▶, i tasti 1-9 o un tocco sul colore. Resta salvato. ' +
+    'rovescia: un giro di volante, i tasti 1-9 o un tocco sul colore. Resta salvato. ' +
     'Ogni prova speciale è sempre la stessa: imparala.',
 
   levelInfo: function (level) {
@@ -285,7 +288,7 @@ TG.registry.register({
     var cfg, percorso, linea, meta;
     var auto, stato, conto, tempo, prossimaPorta, vicino, controlloGlobale;
     var acc, finito, strisce, scossa, note, fuoriStrada, urti, colore, ultimoBeep;
-    var contatto;
+    var contatto, volanteScattato;
     var cam;
 
     function leggiColore() {
@@ -311,7 +314,7 @@ TG.registry.register({
         x: a.x, y: a.y, h: Math.atan2(b.y - a.y, b.x - a.x),
         vx: 0, vy: 0, sterzo: 0, gas: 0, freno: false, velocita: 0, laterale: 0, inStrada: true
       };
-      cam = { x: auto.x, y: auto.y };
+      cam = { x: auto.x, y: auto.y, ang: auto.h };
       stato = 'conto';
       conto = CONTO;
       ultimoBeep = 4;
@@ -320,7 +323,7 @@ TG.registry.register({
       vicino = 3;
       controlloGlobale = 0;
       acc = 0; finito = false; scossa = 0;
-      strisce = []; note = []; fuoriStrada = 0; urti = 0; contatto = false;
+      strisce = []; note = []; fuoriStrada = 0; urti = 0; contatto = false; volanteScattato = false;
       colore = leggiColore();
     }
 
@@ -357,6 +360,13 @@ TG.registry.register({
           if (az === 'left') scegliColore(colore - 1);
           else if (az === 'right') scegliColore(colore + 1);
         }
+        // anche il volante: girato oltre metà corsa cambia colore, una volta per giro
+        var vc = api.input.volante;
+        if (vc && vc.attivo && Math.abs(vc.valore) > 0.5 && !volanteScattato) {
+          scegliColore(colore + (vc.valore > 0 ? 1 : -1));
+          volanteScattato = true;
+        }
+        if (!vc || !vc.attivo || Math.abs(vc.valore) < 0.2) volanteScattato = false;
         while ((cifra = api.input.takeDigit())) { if (cifra <= COLORI.length) scegliColore(cifra - 1); }
         while ((tap = api.input.takeTap())) {
           var k = indiceColoreA(tap.x, tap.y);
@@ -379,9 +389,12 @@ TG.registry.register({
       while (api.input.takeTap()) { /* e i tocchi sul campo non fanno niente */ }
       while (api.input.takeDigit()) { /* nemmeno i numeri */ }
 
-      // sterzo: non scatta, si gira
-      var bersaglioSterzo = (sinistra ? -1 : 0) + (destra ? 1 : 0);
-      auto.sterzo += (bersaglioSterzo - auto.sterzo) * Math.min(1, 10 * dt);
+      /* Sterzo: dal volante a schermo è analogico — mezzo volante è mezza
+         sterzata — e si segue subito; dai tasti è tutto o niente, e si ammorbidisce
+         perché uno scatto secco a 300 px/s manderebbe l'auto di traverso. */
+      var vol = api.input.volante;
+      var bersaglioSterzo = (vol && vol.attivo) ? vol.valore : (sinistra ? -1 : 0) + (destra ? 1 : 0);
+      auto.sterzo += (bersaglioSterzo - auto.sterzo) * Math.min(1, ((vol && vol.attivo) ? 18 : 10) * dt);
 
       var distanza = aggiornaVicino(dt);
       var inStrada = distanza <= meta + 3;
@@ -554,9 +567,18 @@ TG.registry.register({
     /* ---------- disegno ---------- */
 
     var SWATCH = 30, SWATCH_GAP = 6;
+    var AUTO_Y = 0.72;          // dove sta l'auto sullo schermo: in basso, si guarda avanti
     function posizioneColore(i) {
       var tot = COLORI.length * SWATCH + (COLORI.length - 1) * SWATCH_GAP;
-      return { x: (W - tot) / 2 + i * (SWATCH + SWATCH_GAP), y: H * 0.68, w: SWATCH, h: SWATCH };
+      return { x: (W - tot) / 2 + i * (SWATCH + SWATCH_GAP), y: H * 0.23, w: SWATCH, h: SWATCH };
+    }
+
+    /* Da coordinate del mondo a coordinate dello schermo, con la camera
+       corrente: serve a chi disegna sopra la scena (frecce, avvisi). */
+    function aSchermo(x, y) {
+      var th = -(cam.ang + Math.PI / 2), c = Math.cos(th), sn = Math.sin(th);
+      var dx = x - cam.x, dy = y - cam.y;
+      return { x: W / 2 + dx * c - dy * sn, y: H * AUTO_Y + dx * sn + dy * c };
     }
     function indiceColoreA(x, y) {
       for (var i = 0; i < COLORI.length; i++) {
@@ -573,21 +595,35 @@ TG.registry.register({
     }
 
     function draw(ctx) {
-      // la camera guarda un po' avanti, dove l'auto sta andando
-      var mx = auto.x + auto.vx * 0.3, my = auto.y + auto.vy * 0.3;
-      cam.x += (mx - cam.x) * 0.12;
-      cam.y += (my - cam.y) * 0.12;
-      var ox = W / 2 - cam.x, oy = H / 2 - cam.y;
-      if (scossa > 0) { ox += (Math.random() - 0.5) * scossa * 30; oy += (Math.random() - 0.5) * scossa * 30; }
+      /* La camera è agganciata al muso: l'auto sta in basso e punta sempre in
+         alto, il mondo ruota attorno. Con la camera fissa a nord l'auto stava
+         al centro e andando verso il basso si vedeva solo la strada già fatta —
+         e in un rally quello che serve è la curva che arriva. La rotazione è
+         smorzata, così nelle curve il mondo gira un attimo dopo il muso e si
+         sente la sterzata. */
+      var mx = auto.x + Math.cos(auto.h) * 30, my = auto.y + Math.sin(auto.h) * 30;
+      cam.x += (mx - cam.x) * 0.15;
+      cam.y += (my - cam.y) * 0.15;
+      var dAng = auto.h - cam.ang;
+      while (dAng > Math.PI) dAng -= 2 * Math.PI;
+      while (dAng < -Math.PI) dAng += 2 * Math.PI;
+      cam.ang += dAng * 0.12;
 
-      // prato, con macchie che lo fanno scorrere
       ctx.fillStyle = '#1f3d28';
       ctx.fillRect(0, 0, W, H);
       ctx.save();
-      ctx.translate(ox, oy);
+      var sx = 0, sy = 0;
+      if (scossa > 0) { sx = (Math.random() - 0.5) * scossa * 30; sy = (Math.random() - 0.5) * scossa * 30; }
+      ctx.translate(W / 2 + sx, H * AUTO_Y + sy);
+      ctx.rotate(-(cam.ang + Math.PI / 2));
+      ctx.translate(-cam.x, -cam.y);
+
+      // prato, con macchie che lo fanno scorrere: il mondo ruota, quindi il
+      // riquadro da coprire è il cerchio che contiene lo schermo
+      var R = Math.hypot(W, H) * 0.75;
       var T = 56;
-      var x0 = Math.floor((cam.x - W / 2) / T) - 1, x1 = Math.floor((cam.x + W / 2) / T) + 1;
-      var y0 = Math.floor((cam.y - H / 2) / T) - 1, y1 = Math.floor((cam.y + H / 2) / T) + 1;
+      var x0 = Math.floor((cam.x - R) / T), x1 = Math.floor((cam.x + R) / T);
+      var y0 = Math.floor((cam.y - R) / T), y1 = Math.floor((cam.y + R) / T);
       ctx.fillStyle = '#1a3423';
       for (var tx = x0; tx <= x1; tx++) {
         for (var ty = y0; ty <= y1; ty++) {
@@ -613,7 +649,7 @@ TG.registry.register({
       ctx.beginPath();
       for (i = 0; i < strisce.length; i++) {
         var st = strisce[i];
-        if (Math.abs(st.x - cam.x) > W || Math.abs(st.y - cam.y) > H) continue;
+        if (Math.abs(st.x - cam.x) > R || Math.abs(st.y - cam.y) > R) continue;
         ctx.moveTo(st.x, st.y); ctx.lineTo(st.x2, st.y2);
       }
       ctx.stroke();
@@ -648,7 +684,7 @@ TG.registry.register({
       var al = percorso.alberi;
       for (i = 0; i < al.length; i++) {
         var t = al[i];
-        if (Math.abs(t.x - cam.x) > W / 2 + 30 || Math.abs(t.y - cam.y) > H / 2 + 30) continue;
+        if (Math.abs(t.x - cam.x) > R || Math.abs(t.y - cam.y) > R) continue;
         ctx.fillStyle = 'rgba(0,0,0,0.25)';
         ctx.beginPath(); ctx.arc(t.x + 4, t.y + 5, t.r, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = t.tono < 0.5 ? '#2d6a3e' : '#35804a';
@@ -743,7 +779,7 @@ TG.registry.register({
         ctx.globalAlpha = Math.min(1, n.t);
         ctx.font = 'bold ' + (n.testo === 'VIA!' ? 42 : 18) + 'px system-ui, sans-serif';
         ctx.fillStyle = n.tinta;
-        ctx.fillText(n.testo, W / 2, H * 0.36 - (1.1 - n.t) * 20);
+        ctx.fillText(n.testo, W / 2, H * 0.5 - (1.1 - n.t) * 20);
       }
       ctx.globalAlpha = 1;
     }
@@ -788,13 +824,14 @@ TG.registry.register({
       var g = linea[percorso.porte[prossimaPorta]];
       var dx = g.x - auto.x, dy = g.y - auto.y;
       var d = Math.hypot(dx, dy);
-      var sx = g.x + (W / 2 - cam.x), sy = g.y + (H / 2 - cam.y);
-      var fuori = sx < 10 || sx > W - 10 || sy < 55 || sy > H - 10;
+      var ps = aSchermo(g.x, g.y);
+      var fuori = ps.x < 10 || ps.x > W - 10 || ps.y < 55 || ps.y > H - 10;
       var indietro = (dx * Math.cos(auto.h) + dy * Math.sin(auto.h)) < 0 && d > 60;
       if (!fuori && !indietro) return;
-      var ang = Math.atan2(dy, dx);
+      var pa = aSchermo(auto.x, auto.y);
+      var ang = Math.atan2(ps.y - pa.y, ps.x - pa.x);
       ctx.save();
-      ctx.translate(W / 2 + (auto.x - cam.x), H / 2 + (auto.y - cam.y));
+      ctx.translate(pa.x, pa.y);
       ctx.rotate(ang);
       ctx.translate(34, 0);
       ctx.fillStyle = indietro ? '#f87171' : '#fbbf24';
@@ -803,15 +840,12 @@ TG.registry.register({
     }
 
     function disegnaConto(ctx) {
-      ctx.fillStyle = 'rgba(5,7,12,0.45)';
-      ctx.fillRect(0, H * 0.58, W, H * 0.42);
+      ctx.fillStyle = 'rgba(5,7,12,0.5)';
+      api.util.roundRect(ctx, 10, 56, W - 20, H * 0.38 - 50, 10); ctx.fill();
       ctx.textAlign = 'center';
-      ctx.font = 'bold 64px system-ui, sans-serif';
-      ctx.fillStyle = '#f8fafc';
-      ctx.fillText(String(Math.max(1, Math.ceil(conto))), W / 2, H * 0.4);
       ctx.font = '13px system-ui, sans-serif';
       ctx.fillStyle = 'rgba(230,237,243,0.85)';
-      ctx.fillText('Colore dell\'auto — ◀ ▶, 1-9 o un tocco', W / 2, H * 0.64);
+      ctx.fillText('Colore dell\'auto — volante, 1-9 o un tocco', W / 2, H * 0.17);
       for (var i = 0; i < COLORI.length; i++) {
         var p = posizioneColore(i);
         ctx.fillStyle = COLORI[i].tinta;
@@ -826,10 +860,14 @@ TG.registry.register({
       }
       ctx.font = 'bold 14px system-ui, sans-serif';
       ctx.fillStyle = COLORI[colore].tinta;
-      ctx.fillText(COLORI[colore].nome, W / 2, H * 0.68 + SWATCH + 22);
+      ctx.fillText(COLORI[colore].nome, W / 2, H * 0.23 + SWATCH + 22);
       ctx.font = '12px system-ui, sans-serif';
       ctx.fillStyle = 'rgba(230,237,243,0.75)';
-      ctx.fillText('Al via: GAS e tieni la strada', W / 2, H * 0.68 + SWATCH + 42);
+      ctx.fillText('Al via: GAS e tieni la strada', W / 2, H * 0.23 + SWATCH + 42);
+
+      ctx.font = 'bold 64px system-ui, sans-serif';
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillText(String(Math.max(1, Math.ceil(conto))), W / 2, H * 0.56);
     }
 
     function state() {
