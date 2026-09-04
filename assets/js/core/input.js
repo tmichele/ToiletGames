@@ -142,6 +142,45 @@ TG.input = (function () {
       return;
     }
 
+    /* Comandi da guida: lo sterzo sotto il pollice sinistro, i pedali sotto il
+       destro. Sono le stesse quattro azioni della croce direzionale — sinistra
+       e destra sterzano, su è il gas, giù il freno — quindi da tastiera
+       funzionano le frecce e WASD senza che il gioco sappia da dove arrivano.
+       A schermo però la croce non va: guidare vuol dire tenere premuto lo
+       sterzo e il gas *insieme*, con due pollici, e una croce sta sotto uno
+       solo. */
+    if (kind === 'guida') {
+      controlsEl.classList.add('touch-controls--guida');
+      var guida = document.createElement('div');
+      guida.className = 'guida';
+      var sterzo = document.createElement('div');
+      sterzo.className = 'guida__sterzo';
+      [['left', '◀'], ['right', '▶']].forEach(function (d) {
+        var b = document.createElement('button');
+        b.className = 'guida__btn';
+        b.dataset.dir = d[0];
+        b.textContent = d[1];
+        b.setAttribute('aria-label', d[0] === 'left' ? 'sterza a sinistra' : 'sterza a destra');
+        bindHold(b, d[0]);
+        sterzo.appendChild(b);
+      });
+      var pedali = document.createElement('div');
+      pedali.className = 'guida__pedali';
+      [['up', 'GAS', 'acceleratore'], ['down', 'FRENO', 'freno']].forEach(function (d) {
+        var b = document.createElement('button');
+        b.className = 'guida__btn guida__btn--' + (d[0] === 'up' ? 'gas' : 'freno');
+        b.dataset.dir = d[0];
+        b.textContent = d[1];
+        b.setAttribute('aria-label', d[2]);
+        bindHold(b, d[0]);
+        pedali.appendChild(b);
+      });
+      guida.appendChild(sterzo);
+      guida.appendChild(pedali);
+      controlsEl.appendChild(guida);
+      return;
+    }
+
     // due tasti che si dividono tutta la larghezza disponibile
     if (kind === 'lr-big') {
       controlsEl.classList.add('touch-controls--big');

@@ -980,6 +980,147 @@ console.log('\n[orda: labirinto e risvegli]');
   }
 }
 
+/* ---------- Rally: percorso, fisica, cronometro ---------- */
+
+console.log('\n[rally: prove speciali]');
+{
+  const def = defs.rally;
+  const { creaPilota } = require('./rally-bot');
+  const guida = (g, opt) => {
+    const p = creaPilota(opt || {});
+    return () => p(g.game.state(), g.input.held, DT);
+  };
+  const CONTO = 3.4;
+  const dopoIlVia = (g) => runUntil(g.game, () => g.game.state().stato === 'corsa', CONTO + 1);
+
+  /* Il percorso: non si incrocia mai (due pezzi di strada sovrapposti e il
+     gioco non sa più dove sei), gli alberi stanno fuori dall'asfalto, le porte
+     sono in ordine e l'ultima è l'arrivo, e ogni livello è lungo quanto deve —
+     la prima passeggiata si chiudeva in una sacca e i livelli alti uscivano
+     corti della metà. */
+  {
+    let incroci = 0, alberiSuStrada = 0, porteDisordinate = 0, corti = 0;
+    let lunghezzaPrec = 0, nonCrescenti = 0;
+    for (let lv = 1; lv <= 12; lv++) {
+      const s = makeGame(def, util, lv).game.state();
+      const L = s.linea;
+      for (let i = 0; i < L.length; i += 2) {
+        for (let j = i + 40; j < L.length; j += 2) {
+          if (Math.hypot(L[i].x - L[j].x, L[i].y - L[j].y) < s.larghezza * 1.2) incroci++;
+        }
+      }
+      s.alberi.forEach((t) => {
+        if (L.some((p) => Math.hypot(p.x - t.x, p.y - t.y) < s.larghezza / 2 + t.r)) alberiSuStrada++;
+      });
+      for (let k = 1; k < s.porte.length; k++) if (s.porte[k] <= s.porte[k - 1]) porteDisordinate++;
+      if (s.porte[s.porte.length - 1] < L.length - 5) porteDisordinate++;
+      if (s.lunghezza < lunghezzaPrec) nonCrescenti++;
+      lunghezzaPrec = s.lunghezza;
+      if (s.lunghezza < 1800 + lv * 200) corti++;
+    }
+    check('il percorso non si incrocia mai', incroci === 0, incroci + ' coppie di tratti sovrapposti');
+    check('gli alberi stanno fuori dall\'asfalto', alberiSuStrada === 0, alberiSuStrada + ' sulla strada');
+    check('le porte sono in ordine e l\'ultima è l\'arrivo', porteDisordinate === 0);
+    check('i percorsi si allungano col livello, senza sacche', nonCrescenti === 0 && corti === 0,
+      nonCrescenti + ' accorciamenti, ' + corti + ' percorsi corti');
+  }
+
+  // la prova speciale N è sempre la stessa: si impara
+  {
+    const a = makeGame(def, util, 6).game.state(), b = makeGame(def, util, 6).game.state();
+    const c = makeGame(def, util, 7).game.state();
+    const uguali = a.linea.every((p, i) => p.x === b.linea[i].x && p.y === b.linea[i].y);
+    const diversi = a.linea.length !== c.linea.length || a.linea.some((p, i) => p.x !== c.linea[i].x);
+    check('stesso livello, stesso percorso', uguali);
+    check('livello diverso, percorso diverso', diversi);
+  }
+
+  /* Il tempo massimo viene da un giro ideale moltiplicato per un margine che
+     si stringe: è la leva della difficoltà, e deve stringersi davvero. */
+  {
+    const m1 = makeGame(def, util, 1).game.state(), m10 = makeGame(def, util, 10).game.state();
+    const r1 = m1.tempoMax / m1.tempoIdeale, r10 = m10.tempoMax / m10.tempoIdeale;
+    check('il margine sul giro ideale si stringe col livello', r1 > r10 && r10 >= 1.05,
+      r1.toFixed(2) + '× -> ' + r10.toFixed(2) + '×');
+  }
+
+  /* Il colore: durante il conto alla rovescia ◀ ▶ lo cambiano; in corsa
+     sterzano e basta. */
+  {
+    const g = makeGame(def, util, 1);
+    const c0 = g.game.state().colore;
+    g.input.press('right');
+    g.game.update(DT);
+    const c1 = g.game.state().colore;
+    check('durante il conto alla rovescia ▶ cambia colore', c1 === (c0 + 1) % 9, c0 + ' -> ' + c1);
+    dopoIlVia(g);
+    g.input.press('right');
+    for (let i = 0; i < 10; i++) g.game.update(DT);
+    check('in corsa ▶ non tocca il colore', g.game.state().colore === c1);
+  }
+
+  /* La fisica: da fermi lo sterzo non gira, il gas accelera, il freno ferma,
+     l'erba frena da sola e non fa correre. */
+  {
+    const g = makeGame(def, util, 1);
+    dopoIlVia(g);
+    const h0 = g.game.state().auto.h;
+    g.input.held.left = true;
+    for (let i = 0; i < 60; i++) g.game.update(DT);
+    check('da fermi lo sterzo non gira il muso', Math.abs(g.game.state().auto.h - h0) < 0.001);
+    g.input.held.left = false;
+    g.input.held.up = true;
+    for (let i = 0; i < 60; i++) g.game.update(DT);
+    const v1 = g.game.state().auto.velocita;
+    check('il gas accelera', v1 > 120, Math.round(v1) + ' px/s dopo un secondo');
+    g.input.held.up = false;
+    g.input.held.down = true;
+    const fermata = runUntil(g.game, () => g.game.state().auto.velocita <= 1, 3);
+    check('il freno ferma l\'auto', fermata);
+    g.input.held.down = false;
+
+    /* Sull'erba: si esce di strada e si tiene il gas per tre secondi. La
+       velocità di ingresso non conta — sull'asfalto si arriva a 300 e l'erba
+       ci mette un po' a mangiarsela — conta dove si assesta. */
+    const g2 = makeGame(def, util, 1);
+    dopoIlVia(g2);
+    g2.input.held.up = true;
+    for (let i = 0; i < 30; i++) g2.game.update(DT);
+    g2.input.held.right = true;
+    runUntil(g2.game, () => !g2.game.state().inStrada, 4);
+    g2.input.held.right = false;
+    runUntil(g2.game, () => false, 3);
+    const erba = g2.game.state();
+    check('sull\'erba non si corre', !erba.inStrada && erba.auto.velocita > 30 && erba.auto.velocita < 140,
+      Math.round(erba.auto.velocita) + ' px/s a gas aperto' + (erba.inStrada ? ' (ma è tornato sull\'asfalto)' : ''));
+  }
+
+  /* Il cronometro: un buon pilota arriva in tempo e vince; chi non fa niente
+     perde allo scadere, e non un attimo prima. */
+  {
+    const g = makeGame(def, util, 1);
+    const esito = runUntil(g.game, () => !!g.events.outcome, 60, guida(g, { reazione: 0.1, errore: 8, ardimento: 1 }));
+    check('un buon pilota vince la prima prova', esito && g.events.outcome === 'win',
+      g.events.outcome + ' con ' + g.game.state().tempo + 's di margine');
+    check('e passa tutte le porte', g.game.state().prossimaPorta === g.game.state().porte.length);
+
+    const f = makeGame(def, util, 1);
+    const max = f.game.state().tempoMax;
+    let t = 0;
+    runUntil(f.game, () => { t += DT; return !!f.events.outcome; }, 90);
+    check('restando fermi il tempo scade e si perde', f.events.outcome === 'lose');
+    check('e scade quando dice il cronometro', Math.abs(t - (max + CONTO)) < 0.5,
+      t.toFixed(1) + 's contro ' + (max + CONTO).toFixed(1));
+  }
+
+  // e si parte da un livello alto senza aver fatto i precedenti
+  {
+    const g = makeGame(def, util, 9);
+    const esito = runUntil(g.game, () => !!g.events.outcome, 120, guida(g, { reazione: 0.1, errore: 8, ardimento: 1 }));
+    check('la prova 9 si può vincere partendo da lì', esito && g.events.outcome === 'win', g.events.outcome);
+  }
+}
+
 /* ---------- ripartenza: partire da un livello qualsiasi ---------- */
 
 console.log('\n[ripartenza: partenza da livello alto]');

@@ -11,6 +11,7 @@
 
 const { loadGames, makeInput, SFX } = require('./sandbox');
 const { creaPilota } = require('./orda-bot');
+const { creaPilota: creaPilotaRally } = require('./rally-bot');
 
 const DT = 1 / 60;            // passo fisso di simulazione
 const MAX_SECONDS = 240;      // taglio di sicurezza per partite che non finiscono
@@ -172,6 +173,20 @@ const BOTS = {
       pesoCasse: 1
     });
     return function (s, dt) { pilota(s, api.input.stick, dt); };
+  },
+
+  /* Il pilota del rally sta in test/rally-bot.js, condiviso con regole.js:
+     segue la stessa regola con cui il gioco stima il giro ideale, quindi il
+     tempo massimo è battibile per costruzione. La reazione è l'intervallo fra
+     due decisioni, l'errore fa sbagliare la mira, la velocità della mano
+     diventa l'ardimento: quanto vicino al limite dell'auto si spinge. */
+  rally: (profile) => (api, game) => {
+    const pilota = creaPilotaRally({
+      reazione: profile.reaction,
+      errore: profile.error,
+      ardimento: 0.55 + 0.45 * (profile.speed - 240) / 240
+    });
+    return function (s, dt) { pilota(s, api.input.held, dt); };
   },
 
   /* Il bot dell'hockey ragiona come la CPU: si mette dietro al disco e poi ci

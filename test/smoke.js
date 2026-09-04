@@ -32,7 +32,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   console.log('\n[home]');
   const cards = await page.$$('.card');
-  check('10 giochi in elenco', cards.length === 10, cards.length + ' trovati');
+  check('11 giochi in elenco', cards.length === 11, cards.length + ' trovati');
   check('titoli presenti', (await page.textContent('#game-grid')).includes('Serpente'));
 
   // La versione in barra è il modo per accorgersi di una pagina vecchia in
@@ -505,6 +505,52 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
      balance.js, dove il tempo non è quello dell'orologio. */
   check('si spara da soli e i mostri cadono', abbattuti >= 2, abbattuti + ' abbattuti');
   check('il punteggio sale', (await page.evaluate(() => TG.engine.getScore())) > 0);
+
+  // ---- Rally: comandi da guida, colore, cronometro ----
+  console.log('\n[rally]');
+  await page.goto(URL + '#/g/rally');
+  await sleep(400);
+  await page.click('.btn:has-text("Gioca")');
+  await sleep(300);
+  const pedali = await page.$$eval('#touch-controls .guida__btn', (b) => b.map((x) => x.textContent));
+  check('il rally ha sterzo e pedali', pedali.length === 4 && pedali.indexOf('GAS') >= 0 && pedali.indexOf('FRENO') >= 0,
+    pedali.join(' '));
+  const r0 = await page.evaluate(() => TG.engine.inspect().game);
+  check('si parte col conto alla rovescia', r0.stato === 'conto' && r0.conto > 0);
+  // il colore si sceglie mentre si conta, e resta salvato
+  await page.keyboard.press('ArrowRight');
+  await sleep(120);
+  const r1 = await page.evaluate(() => TG.engine.inspect().game);
+  check('▶ durante il conto cambia il colore dell\'auto', r1.colore === (r0.colore + 1) % 9, r0.colore + ' -> ' + r1.colore);
+  check('il colore viene salvato', (await page.evaluate(() => TG.storage.get('rally:colore'))) === r1.colore);
+  await sleep(3400);
+  const r2 = await page.evaluate(() => TG.engine.inspect().game);
+  check('al via si corre', r2.stato === 'corsa', r2.stato);
+  // GAS da tastiera: l'auto parte davvero
+  await page.keyboard.down('ArrowUp');
+  await sleep(1200);
+  const r3 = await page.evaluate(() => TG.engine.inspect().game);
+  await page.keyboard.up('ArrowUp');
+  const percorso = Math.hypot(r3.auto.x - r2.auto.x, r3.auto.y - r2.auto.y);
+  check('col gas l\'auto parte', r3.auto.velocita > 100 && percorso > 60,
+    Math.round(r3.auto.velocita) + ' px/s, ' + Math.round(percorso) + ' px');
+  check('il cronometro scorre', r3.tempo < r2.tempo, r2.tempo + ' -> ' + r3.tempo);
+  // e il tasto a schermo fa lo stesso lavoro del tasto freccia
+  const gasBtn = await page.$('#touch-controls .guida__btn--gas');
+  const gb = await gasBtn.boundingBox();
+  await page.mouse.move(gb.x + gb.width / 2, gb.y + gb.height / 2);
+  await page.mouse.down();
+  await sleep(400);
+  const gasPremuto = await page.evaluate(() => TG.input.isDown('up'));
+  await page.mouse.up();
+  check('il pedale GAS a schermo accelera', gasPremuto);
+  // il colore sopravvive al ricaricamento
+  await page.goto(URL + '#/g/rally');
+  await sleep(400);
+  await page.click('.btn:has-text("Gioca")');
+  await sleep(200);
+  check('il colore scelto sopravvive al ricaricamento',
+    (await page.evaluate(() => TG.engine.inspect().game.colore)) === r1.colore);
 
   // ---- si riparte sempre dall'ultimo livello raggiunto ----
   console.log('\n[ripartenza]');

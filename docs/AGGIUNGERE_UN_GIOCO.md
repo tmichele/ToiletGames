@@ -27,7 +27,7 @@ TG.registry.register({
   icon: '🎲',
   tagline: 'Una riga che spiega il gioco nella card.',
   scoreLabel: 'Punti',            // etichetta nell'HUD
-  controls: 'dpad',               // 'dpad' | 'lr' | 'lr-big' | 'joystick' | 'pointer' | 'action' | 'none'
+  controls: 'dpad',               // 'dpad' | 'lr' | 'lr-big' | 'joystick' | 'guida' | 'pointer' | 'action' | 'none'
   actionLabel: '',                // se valorizzato aggiunge il pulsante azione
   viewport: { w: 360, h: 480 },   // coordinate logiche: il canvas ci si adatta,
                                   // scalando per stare nello spazio disponibile
@@ -96,7 +96,7 @@ statistiche.
 | `api.gameOver({message})` | partita finita: il motore salva il risultato in classifica |
 | `api.input` | `take()`, `takeTap()`, `takeDigit()`, `isDown(azione)`, `pointer` |
 | `api.util` | `clamp`, `randInt`, `randFloat`, `pick`, `shuffle`, `lerp`, `circleRectHit`, `roundRect`, `opponentSpeedRatio` |
-| `api.sfx` | `click`, `pick`, `hit`, `bounce`, `fail`, `tone(freq, durata, tipo, volume)` |
+| `api.sfx` | `click`, `pick`, `hit`, `bounce`, `fail`, `tone(freq, durata, tipo, volume)`; per un suono continuo `motoreImposta(giri, gas, slitta)`, da rinfrescare a ogni `update` — si spegne da solo se non lo chiami più |
 
 Il gioco **non** deve gestire pausa, ridimensionamento, ciclo di rendering,
 classifica o cambio livello: sono già del motore. Nemmeno la schermata delle
@@ -162,7 +162,10 @@ nello stesso `update`, conviene comunque fermarsi appena lo stato cambia.
 I valori di `controls` decidono i comandi a schermo: `dpad` (croce direzionale),
 `lr` (sinistra/destra piccoli), `lr-big` (due tasti che si dividono tutta la
 larghezza, per i giochi dove serve un bersaglio grande per il pollice),
-`joystick` (leva analogica), `pointer` e `none` (nessun pulsante). Con `actionLabel` valorizzato si aggiunge
+`joystick` (leva analogica), `guida` (sterzo ◀ ▶ a sinistra e pedali GAS/FRENO
+a destra: sono le stesse azioni della croce — `left`/`right`, `up`/`down` — ma
+disposte per due pollici, perché guidare vuol dire tenere premuti sterzo e gas
+insieme), `pointer` e `none` (nessun pulsante). Con `actionLabel` valorizzato si aggiunge
 il pulsante azione.
 
 ## Tarare la difficoltà

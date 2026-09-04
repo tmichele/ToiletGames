@@ -17,6 +17,7 @@ da `file://`) e giochi.
 | 🔴 **Forza 4** | Quattro di fila, vs CPU o in due | La CPU guarda sempre più mosse avanti (minimax) e smette di svarionare |
 | 🔢 **Tessere** | Rompicapo scorrevole (il «quindici») | Griglia da 3×3 (livelli 1-2) a 4×4 e 5×5, mescolamento più profondo; il tempo cresce con la griglia — un paio di minuti per il 3×3, quattro per il 4×4, oltre sei per il 5×5 |
 | 🧭 **Labirinto** | Prima persona, con una mappa che si dimentica | Labirinto più grande, memoria della mappa più corta (24s al 1° livello, 10s al 10°), meno alberi, vista più corta |
+| 🏁 **Rally** | Prove speciali viste dall'alto, contro il cronometro | Percorsi più lunghi e tortuosi, strada più stretta, più alberi a bordo pista, e un margine sul giro ideale che si stringe (dal +62% del 1° livello al +6% dal 10°) |
 | 👾 **Orda** | Sparatutto dall'alto in un dungeon di camere e corridoi: i mostri dormono finché non ti vedono | Ondate più numerose, mostri più veloci e con la vista più lunga (quindi se ne sveglia di più tutti insieme), tipi nuovi che si aggiungono ai vecchi — scattanti dal 2°, corazzati dal 3°, tiratori dal 4°, gemelli che si sdoppiano dal 7° — e un boss ogni cinque livelli |
 
 Il **Labirinto** si gioca in prima persona con il joystick. La pianta non è mai
@@ -86,6 +87,40 @@ finirebbe in un vicolo cieco, e una camera con una porta sola è un vicolo cieco
 grande), e le comparse sono annunciate da un cerchio rosso, sempre lontano da te
 e fuori dalla tua vista.
 
+In **Rally** non c'è nessuno in pista: l'avversario è il cronometro. Ogni
+livello è una **prova speciale** dal via all'arrivo, e si vince arrivando prima
+che scada il tempo massimo. Il percorso è generato, ma con un seme che dipende
+solo dal numero del livello: **la prova 4 è sempre la prova 4**, oggi e fra dieci
+tentativi, ed è quello che rende battibile un tempo che al primo passaggio sembra
+impossibile — un rally si impara curva dopo curva. La strada è una striscia
+d'asfalto in un prato: **fuori strada non si muore, si striscia** (l'erba frena
+forte e le gomme non tengono), quindi tagliare una curva costa più che
+percorrerla, e le **porte** bianche vanno passate tutte in ordine — chi ne
+salta una vede la freccia che lo rimanda indietro. L'auto **scivola**: la
+velocità non gira con il muso, la sua componente laterale resta e si spegne con
+l'aderenza, tanta sull'asfalto e poca sull'erba. È la derapata, ed è il motivo
+per cui frenare prima della curva e accelerare in uscita si sente sotto il
+pollice. Gli alberi sono duri.
+
+Il tempo massimo non viene dalla lunghezza ma da un **giro ideale simulato**: la
+velocità che ogni curva permette, poi due passate per rispettare accelerazione
+e frenata, e il tempo è la somma dei tratti. Dividere la lunghezza per una
+velocità media premiava i percorsi dritti e condannava quelli tortuosi — allo
+stesso livello un tracciato si vinceva con dieci secondi di margine e quello
+dopo era impossibile. Così invece il margine è una scelta di livello: +62% al
+primo, +6% dal decimo. Il pilota simulato di `test/rally-bot.js` segue la stessa
+regola, quindi il tempo richiesto è battibile per costruzione, non per
+speranza. I comandi sono quelli di un'auto — **◀ ▶ sterzano, GAS, FRENO** (che
+da fermo fa retromarcia), a schermo con due pollici e da tastiera con le frecce —
+e il **colore dell'auto** si sceglie durante il conto alla rovescia, con ◀ ▶, i
+tasti 1-9 o un tocco: resta salvato. L'**audio** è metà del gioco: un motore che
+segue i giri con le marce che cambiano, le gomme che slittano quando si scivola,
+il conto alla rovescia, il tonfo contro gli alberi. Il motore è un suono
+continuo, non un effetto: sta in `TG.sfx` (`motoreImposta`), va rinfrescato a
+ogni fotogramma e si spegne da solo se il gioco si ferma — in pausa, sul
+riepilogo, tornando all'elenco — perché il gioco non viene avvertito di nessuna
+di quelle tre cose.
+
 Gli avversari simulati seguono una regola comune (`TG.util.opponentSpeedRatio`):
 al primo livello si muovono poco sotto la tua velocità, intorno al terzo la
 pareggiano, poi la superano fino al 135%. Quello che cambia negli altri livelli
@@ -139,8 +174,8 @@ open index.html            # oppure doppio click sul file
 Funziona anche servito da un web server statico, ma non è necessario.
 
 **Comandi:** frecce o WASD da tastiera, pad e leva a schermo da telefono,
-trascinamento del dito dove serve, tasti 1-9 per i giochi a riquadri. `Esc` o il
-pulsante ⏸ mettono in pausa.
+sterzo e pedali nel rally, trascinamento del dito dove serve, tasti 1-9 per i
+giochi a riquadri. `Esc` o il pulsante ⏸ mettono in pausa.
 
 **Mentre giochi lo schermo è tutto campo e comandi**: niente da scorrere sotto.
 La classifica 🏆 e le istruzioni ❓ del gioco aperto stanno nelle icone in alto a
@@ -166,11 +201,11 @@ assets/js/core/
   version.js                numero di release mostrato in barra
   util.js                   funzioni di appoggio (random, collisioni, disegno)
   storage.js                localStorage con fallback in memoria
-  sfx.js                    effetti sonori sintetizzati (WebAudio)
+  sfx.js                    effetti sonori sintetizzati (WebAudio) e il motore del rally
   profile.js                nome del giocatore
   scores.js                 classifiche e statistiche per gioco
   registry.js               registro dei giochi + contratto
-  input.js                  tastiera, swipe, puntatore, pad e leva a schermo
+  input.js                  tastiera, swipe, puntatore, pad, leva e comandi da guida
   engine.js                 canvas, ciclo di gioco, livelli, punteggio
   ui.js                     elenco, HUD, classifica, pannelli
   app.js                    avvio e navigazione (#/g/<id>)
@@ -181,6 +216,7 @@ test/smoke.js               test di fumo con Playwright
 test/balance.js             banco di prova della difficoltà
 test/regole.js              meccaniche difficili da raggiungere nel browser
 test/orda-bot.js            pilota simulato di Orda (naviga il dungeon)
+test/rally-bot.js           pilota simulato di Rally (guarda avanti, frena prima)
 ```
 
 La divisione è netta: il motore gestisce canvas, ciclo, pausa, livelli,
@@ -221,7 +257,15 @@ almeno due porte l'una, che i mostri ci si radunino (senza raduno la percentuale
 crollerebbe a quel terzo di campo che le camere occupano), che chi dorme non si
 muova e non si svegli da solo, che nessuno attraversi i muri, che i mostri
 compaiano lontano e annunciati, e che finite le munizioni si torni alla pistola
-invece di restare disarmati.
+invece di restare disarmati. Per Rally controlla il percorso — che non si
+incroci mai, che gli alberi stiano fuori dall'asfalto, che le porte siano in
+ordine e che ogni livello sia lungo quanto deve (la prima passeggiata casuale si
+chiudeva in una sacca e i livelli alti uscivano corti della metà) — che la
+stessa prova sia sempre la stessa, che il margine sul giro ideale si stringa
+davvero, e la fisica: da fermi lo sterzo non gira, il gas accelera, il freno
+ferma, sull'erba non si corre. Poi fa guidare il pilota simulato: deve vincere
+la prima prova e la nona partendo da lì, e chi resta fermo deve perdere allo
+scadere esatto del cronometro.
 
 Il primo profilo, «fermo», non tocca niente: serve a verificare che stare fermi
 faccia perdere. Un gioco che si vince senza giocare è rotto quanto uno
@@ -247,12 +291,23 @@ Stato attuale (percentuale di livelli vinti dal profilo indicato):
 | Orda · fermo | 0% | 0% | 0% | 0% | 0% |
 | Orda · medio | 100% | 100% | 93% | 98% | 78% |
 | Orda · bravo | 100% | 100% | 85% | 95% | 85% |
+| Rally · fermo | 0% | 0% | 0% | 0% | 0% |
+| Rally · medio | 100% | 100% | 100% | 28% | 20% |
+| Rally · bravo | 100% | 100% | 100% | 100% | 100% |
 
 La riga «bravo» di Mattoni è salita al 7° livello — dal 20% al 60% — da quando
 il fantasma non compare più sotto il 12°. È l'effetto che il bot subiva più di
 chiunque: quando la pallina sparisce lui prosegue verso l'ultima posizione nota,
 e ai livelli in cui il muro ne conteneva quattro o cinque quella cecità gli
 costava la partita. Il numero misura la modifica, non un gioco diventato facile.
+
+Il pilota del rally guarda avanti lungo la mezzeria e sterza verso quel punto;
+il gas lo decide la curva in arrivo, con la stessa regola con cui il gioco stima
+il giro ideale. La reazione è l'intervallo fra due decisioni — e in un'auto a
+300 px/s quattro decimi di secondo sono una curva intera, ed è per questo che il
+profilo «scarso» non vince nemmeno la prima prova: non è che il livello 1 sia
+duro, è che quel profilo sterza in ritardo di due auto. Le colonne «medio» e
+«bravo» sono quelle da leggere.
 
 **Forza 4**, **Tessere** e **Labirinto** non compaiono qui: sono giochi di
 turni, di ragionamento o di orientamento, dove profili basati su riflessi non
