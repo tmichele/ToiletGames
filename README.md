@@ -17,7 +17,7 @@ da `file://`) e giochi.
 | 🔴 **Forza 4** | Quattro di fila, vs CPU o in due | La CPU guarda sempre più mosse avanti (minimax) e smette di svarionare |
 | 🔢 **Tessere** | Rompicapo scorrevole (il «quindici») | Griglia da 3×3 (livelli 1-2) a 4×4 e 5×5, mescolamento più profondo; il tempo cresce con la griglia — un paio di minuti per il 3×3, quattro per il 4×4, oltre sei per il 5×5 |
 | 🧭 **Labirinto** | Prima persona, con una mappa che si dimentica | Labirinto più grande, memoria della mappa più corta (24s al 1° livello, 10s al 10°), meno alberi, vista più corta |
-| 🏁 **Rally** | Prove speciali viste dall'alto, contro il cronometro | Percorsi più lunghi e tortuosi, strada più stretta, più alberi a bordo pista, e un margine sul giro ideale che si stringe (dal +62% del 1° livello al +6% dal 10°) |
+| 🍕 **Pizze** | Consegne a domicilio in 3D, per le strade di Codiverno | Turni più lunghi e più lontani dalla piazza, più pizze per giro (una fino al 2°, due fino al 4°, poi tre) e un margine di calore che si stringe: dal +200% del giro ideale al primo turno al +120% del decimo |
 | 👾 **Orda** | Sparatutto dall'alto in un dungeon di camere e corridoi: i mostri dormono finché non ti vedono | Ondate più numerose, mostri più veloci e con la vista più lunga (quindi se ne sveglia di più tutti insieme), tipi nuovi che si aggiungono ai vecchi — scattanti dal 2°, corazzati dal 3°, tiratori dal 4°, gemelli che si sdoppiano dal 7° — e un boss ogni cinque livelli |
 
 Il **Labirinto** si gioca in prima persona con il joystick. La pianta non è mai
@@ -87,45 +87,46 @@ finirebbe in un vicolo cieco, e una camera con una porta sola è un vicolo cieco
 grande), e le comparse sono annunciate da un cerchio rosso, sempre lontano da te
 e fuori dalla tua vista.
 
-In **Rally** non c'è nessuno in pista: l'avversario è il cronometro. Ogni
-livello è una **prova speciale** dal via all'arrivo, e si vince arrivando prima
-che scada il tempo massimo. Il percorso è generato, ma con un seme che dipende
-solo dal numero del livello: **la prova 4 è sempre la prova 4**, oggi e fra dieci
-tentativi, ed è quello che rende battibile un tempo che al primo passaggio sembra
-impossibile — un rally si impara curva dopo curva. La strada è una striscia
-d'asfalto in un prato: **fuori strada non si muore, si striscia** (l'erba frena
-forte e le gomme non tengono), quindi tagliare una curva costa più che
-percorrerla, e le **porte** bianche vanno passate tutte in ordine — chi ne
-salta una vede la freccia che lo rimanda indietro. L'auto **scivola**: la
-velocità non gira con il muso, la sua componente laterale resta e si spegne con
-l'aderenza, tanta sull'asfalto e poca sull'erba. È la derapata, ed è il motivo
-per cui frenare prima della curva e accelerare in uscita si sente sotto il
-pollice. Gli alberi sono duri.
+In **Pizze** si consegna a domicilio a **Codiverno**, una frazione di Vigonza,
+guidando in 3D con la telecamera sopra l'auto. Si esce dalla pizzeria con le
+pizze appena sfornate e si consegna finché sono calde: il tempo del gioco non è
+un cronometro, è il **calore**, che scende da solo e non aspetta. Una pizza che
+arriva fredda chiude il turno.
 
-Il tempo massimo non viene dalla lunghezza ma da un **giro ideale simulato**: la
-velocità che ogni curva permette, poi due passate per rispettare accelerazione
-e frenata, e il tempo è la somma dei tratti. Dividere la lunghezza per una
-velocità media premiava i percorsi dritti e condannava quelli tortuosi — allo
-stesso livello un tracciato si vinceva con dieci secondi di margine e quello
-dopo era impossibile. Così invece il margine è una scelta di livello: +62% al
-primo, +6% dal decimo. Il pilota simulato di `test/rally-bot.js` segue la stessa
-regola, quindi il tempo richiesto è battibile per costruzione, non per
-speranza. I comandi sono quelli di un'auto: un **volante** vero, che si gira
-prendendolo dal pomello — ruota di quanto ruota il dito attorno al centro, mezzo
-giro è mezza sterzata, lasciato torna dritto — e i pedali **GAS** e **FRENO**
-(che da fermo fa retromarcia), a schermo con due pollici e da tastiera con le
-frecce. La camera è agganciata al muso: **l'auto sta in basso e punta sempre in
-alto**, il mondo le ruota attorno, e quello che si vede davanti è la curva che
-arriva — con la camera fissa a nord e l'auto al centro, andando verso il basso
-si vedeva solo la strada già fatta. Il **colore dell'auto** si sceglie durante
-il conto alla rovescia, con un giro di volante, i tasti 1-9 o un tocco: resta
-salvato. L'**audio** è metà del gioco: un motore che
-segue i giri con le marce che cambiano, le gomme che slittano quando si scivola,
-il conto alla rovescia, il tonfo contro gli alberi. Il motore è un suono
-continuo, non un effetto: sta in `TG.sfx` (`motoreImposta`), va rinfrescato a
-ogni fotogramma e si spegne da solo se il gioco si ferma — in pausa, sul
-riepilogo, tornando all'elenco — perché il gioco non viene avvertito di nessuna
-di quelle tre cose.
+Il calore concesso non è deciso a occhio. È il tempo del **giro ideale** — il
+percorso più breve *sulle strade*, calcolato con Dijkstra sul grafo del paese —
+moltiplicato per un margine che si stringe salendo di livello. E il giro ideale
+è quello «alla fermata più vicina», cioè l'ordine che suggerisce il navigatore
+del gioco: seguendo le frecce ce la fai per costruzione. Calcolarlo sul giro
+*ottimo* sembrava più elegante e faceva arrivare fuori tempo chi seguiva le
+indicazioni — il gioco prometteva un margine che poi non dava. Trovare un giro
+più corto di quello suggerito resta possibile, e il calore che avanza diventa
+punti: dal 5° livello si esce con tre pizze insieme, e allora conta soprattutto
+**in che ordine** le consegni.
+
+Le pizze si raffreddano **anche mentre sei fermo**, comprese quelle che ti
+aspettano sul bancone per il giro dopo: senza questa regola chi resta immobile
+dopo una consegna non perderebbe mai, ed è l'invariante che la suite misura per
+prima. Per consegnare bisogna **accostare** — un faro di luce indica il civico,
+le frecce sull'asfalto portano lì, ma passare sotto casa a cinquanta non vale
+una consegna. Fuori strada si arranca e le case non si attraversano.
+
+La scena è **3D disegnata sul canvas 2D**: proiezione prospettica a mano, muri
+come scatole estruse, ordinamento del pittore, taglio dei poligoni sul piano
+vicino. Niente WebGL, come il raycasting del Labirinto — così gira dove gira il
+resto della suite.
+
+**Sulla mappa, una precisazione onesta.** Il paese sta in un file di dati
+generato (`assets/js/mappe/codiverno.js`) che dichiara sempre la propria fonte,
+e il gioco la scrive in schermata. Al momento è una **ricostruzione**: una
+frazione veneta plausibile — la strada principale con la chiesa e la piazza, le
+laterali, la zona artigianale, i campi — **non il rilievo vero di Codiverno**,
+perché la rete di questo ambiente non raggiunge OpenStreetMap. Per avere il
+paese vero basta un export: si scarica il riquadro attorno a Codiverno da
+openstreetmap.org («Esporta»), si salva come `dati/codiverno.osm` e si lancia
+`node tools/mappa.js`. Strade, nomi e civici diventano quelli veri, il file si
+marca come `OpenStreetMap` (ODbL, con l'attribuzione dovuta) e il gioco non se
+ne accorge nemmeno: cambiano solo i dati.
 
 Gli avversari simulati seguono una regola comune (`TG.util.opponentSpeedRatio`):
 al primo livello si muovono poco sotto la tua velocità, intorno al terzo la
@@ -187,7 +188,7 @@ open index.html            # oppure doppio click sul file
 Funziona anche servito da un web server statico, ma non è necessario.
 
 **Comandi:** frecce o WASD da tastiera, pad e leva a schermo da telefono,
-volante e pedali nel rally, trascinamento del dito dove serve, tasti 1-9 per i
+volante e pedali nelle consegne, trascinamento del dito dove serve, tasti 1-9 per i
 giochi a riquadri. `Esc` o il pulsante ⏸ mettono in pausa.
 
 **Mentre giochi lo schermo è tutto campo e comandi**: niente da scorrere sotto.
@@ -214,7 +215,7 @@ assets/js/core/
   version.js                legge la versione dal meta e la mostra in barra
   util.js                   funzioni di appoggio (random, collisioni, disegno)
   storage.js                localStorage con fallback in memoria
-  sfx.js                    effetti sonori sintetizzati (WebAudio) e il motore del rally
+  sfx.js                    effetti sonori sintetizzati (WebAudio) e il motore dell'auto
   profile.js                nome del giocatore
   scores.js                 classifiche e statistiche per gioco
   registry.js               registro dei giochi + contratto
@@ -223,13 +224,15 @@ assets/js/core/
   ui.js                     elenco, HUD, classifica, pannelli
   app.js                    avvio e navigazione (#/g/<id>)
 assets/js/games/            un file per gioco
+assets/js/mappe/            mappe generate (dati, non si scrivono a mano)
+tools/mappa.js              costruisce la mappa di Codiverno (da OSM o ricostruita)
 docs/AGGIUNGERE_UN_GIOCO.md come aggiungerne uno
 test/sandbox.js             esecuzione dei giochi fuori dal browser
 test/smoke.js               test di fumo con Playwright
 test/balance.js             banco di prova della difficoltà
 test/regole.js              meccaniche difficili da raggiungere nel browser
 test/orda-bot.js            pilota simulato di Orda (naviga il dungeon)
-test/rally-bot.js           pilota simulato di Rally (guarda avanti, frena prima)
+test/pizze-bot.js           pilota simulato di Pizze (segue la rotta, accosta)
 ```
 
 La divisione è netta: il motore gestisce canvas, ciclo, pausa, livelli,
@@ -270,15 +273,15 @@ almeno due porte l'una, che i mostri ci si radunino (senza raduno la percentuale
 crollerebbe a quel terzo di campo che le camere occupano), che chi dorme non si
 muova e non si svegli da solo, che nessuno attraversi i muri, che i mostri
 compaiano lontano e annunciati, e che finite le munizioni si torni alla pistola
-invece di restare disarmati. Per Rally controlla il percorso — che non si
-incroci mai, che gli alberi stiano fuori dall'asfalto, che le porte siano in
-ordine e che ogni livello sia lungo quanto deve (la prima passeggiata casuale si
-chiudeva in una sacca e i livelli alti uscivano corti della metà) — che la
-stessa prova sia sempre la stessa, che il margine sul giro ideale si stringa
-davvero, e la fisica: da fermi lo sterzo non gira, il gas accelera, il freno
-ferma, sull'erba non si corre. Poi fa guidare il pilota simulato: deve vincere
-la prima prova e la nona partendo da lì, e chi resta fermo deve perdere allo
-scadere esatto del cronometro.
+invece di restare disarmati. Per Pizze controlla il paese e il patto del gioco:
+che tutte le strade siano collegate, che ogni civico sia raggiungibile *per
+strada* e che ci si accosti stando sull'asfalto (un indirizzo servibile solo
+attraversando i campi sarebbe una consegna chiesta e non concessa), che lo
+stesso turno abbia sempre gli stessi indirizzi, che il calore scenda anche da
+fermi e anche per le pizze in attesa sul bancone, che restando fermi il turno si
+perda, che passare sotto casa a tutta velocità non valga una consegna — e che
+seguendo il navigatore il turno si chiuda davvero, primo e ottavo, perché è
+esattamente ciò che il budget di calore promette.
 
 Il primo profilo, «fermo», non tocca niente: serve a verificare che stare fermi
 faccia perdere. Un gioco che si vince senza giocare è rotto quanto uno
@@ -304,9 +307,18 @@ Stato attuale (percentuale di livelli vinti dal profilo indicato):
 | Orda · fermo | 0% | 0% | 0% | 0% | 0% |
 | Orda · medio | 100% | 100% | 93% | 98% | 78% |
 | Orda · bravo | 100% | 100% | 85% | 95% | 85% |
-| Rally · fermo | 0% | 0% | 0% | 0% | 0% |
-| Rally · medio | 100% | 100% | 100% | 28% | 20% |
-| Rally · bravo | 100% | 100% | 100% | 100% | 100% |
+| Pizze · fermo | 0% | 0% | 0% | 0% | 0% |
+| Pizze · medio | 100% | 100% | 75% | 100% | 90% |
+| Pizze · bravo | 100% | 100% | 100% | 100% | 100% |
+
+Le righe di Pizze vanno lette con due avvertenze. La prima: la percentuale di
+turni vinti, sopra a un margine di calore così stretto, è quasi testa o croce —
+il numero che descrive davvero la difficoltà è **quanto calore resta sulla
+consegna più tirata**, e quello scende liscio (profilo medio: 48% al 1° turno,
+37% al 3°, 30% al 5°, 16% al 7°, 1% al 9°). La seconda: la colonna «bravo» è
+piatta al 100% e resterà tale, perché il tetto di questo gioco è la velocità di
+chi guida, e il bot guida al limite fisico dell'auto con la rotta perfetta già
+in mano. Non è un livello facile: è un pilota che non sbaglia strada.
 
 La riga «bravo» di Mattoni è salita al 7° livello — dal 20% al 60% — da quando
 il fantasma non compare più sotto il 12°. È l'effetto che il bot subiva più di
@@ -314,13 +326,12 @@ chiunque: quando la pallina sparisce lui prosegue verso l'ultima posizione nota,
 e ai livelli in cui il muro ne conteneva quattro o cinque quella cecità gli
 costava la partita. Il numero misura la modifica, non un gioco diventato facile.
 
-Il pilota del rally guarda avanti lungo la mezzeria e sterza verso quel punto;
-il gas lo decide la curva in arrivo, con la stessa regola con cui il gioco stima
-il giro ideale. La reazione è l'intervallo fra due decisioni — e in un'auto a
-300 px/s quattro decimi di secondo sono una curva intera, ed è per questo che il
-profilo «scarso» non vince nemmeno la prima prova: non è che il livello 1 sia
-duro, è che quel profilo sterza in ritardo di due auto. Le colonne «medio» e
-«bravo» sono quelle da leggere.
+Il pilota delle Pizze segue la rotta che il gioco disegna a terra e accosta
+sotto casa, perché la consegna si fa da fermi. La reazione è l'intervallo fra
+due decisioni — e in un'auto a cinquanta all'ora quattro decimi di secondo sono
+un incrocio intero, ed è per questo che il profilo «scarso» consegna solo al
+primo turno: non è che il livello sia duro, è che quel profilo sterza quando
+l'incrocio è già passato. Le colonne «medio» e «bravo» sono quelle da leggere.
 
 **Forza 4**, **Tessere** e **Labirinto** non compaiono qui: sono giochi di
 turni, di ragionamento o di orientamento, dove profili basati su riflessi non

@@ -980,144 +980,178 @@ console.log('\n[orda: labirinto e risvegli]');
   }
 }
 
-/* ---------- Rally: percorso, fisica, cronometro ---------- */
+/* ---------- Pizze: il paese, il calore, le consegne ---------- */
 
-console.log('\n[rally: prove speciali]');
+console.log('\n[pizze: consegne a Codiverno]');
 {
-  const def = defs.rally;
-  const { creaPilota } = require('./rally-bot');
+  const def = defs.pizze;
+  const { creaPilota } = require('./pizze-bot');
   const guida = (g, opt) => {
     const p = creaPilota(opt || {});
     return () => p(g.game.state(), g.input.held, DT);
   };
-  const CONTO = 3.4;
-  const dopoIlVia = (g) => runUntil(g.game, () => g.game.state().stato === 'corsa', CONTO + 1);
+  const CONTO = 3.2;
+  const dopoIlVia = (g) => runUntil(g.game, () => g.game.state().stato === 'giro', CONTO + 1);
+  const mappa = () => makeGame(def, util, 1).api && global.__mappa;
 
-  /* Il percorso: non si incrocia mai (due pezzi di strada sovrapposti e il
-     gioco non sa più dove sei), gli alberi stanno fuori dall'asfalto, le porte
-     sono in ordine e l'ultima è l'arrivo, e ogni livello è lungo quanto deve —
-     la prima passeggiata si chiudeva in una sacca e i livelli alti uscivano
-     corti della metà. */
+  /* Il paese: tutte le strade in una rete sola, e ogni civico accostabile
+     *dalla strada*. Un indirizzo raggiungibile solo attraversando i campi
+     sarebbe una consegna che il gioco chiede e non concede. */
   {
-    let incroci = 0, alberiSuStrada = 0, porteDisordinate = 0, corti = 0;
-    let lunghezzaPrec = 0, nonCrescenti = 0;
-    for (let lv = 1; lv <= 12; lv++) {
-      const s = makeGame(def, util, lv).game.state();
-      const L = s.linea;
-      for (let i = 0; i < L.length; i += 2) {
-        for (let j = i + 40; j < L.length; j += 2) {
-          if (Math.hypot(L[i].x - L[j].x, L[i].y - L[j].y) < s.larghezza * 1.2) incroci++;
+    const s = makeGame(def, util, 1).game.state();
+    const m = s.mappa;
+    const DR = [];
+    // le strade si toccano nei nodi: si visita il grafo dalla pizzeria
+    const adj = m.nodi.map(() => []);
+    m.archi.forEach(([a, b]) => { adj[a].push(b); adj[b].push(a); });
+    const vicino = (x, y) => {
+      let b = 0, bd = Infinity;
+      m.nodi.forEach((n, i) => { const d = Math.hypot(n[0] - x, n[1] - y); if (d < bd) { bd = d; b = i; } });
+      return b;
+    };
+    const visto = new Array(m.nodi.length).fill(false);
+    const q = [vicino(m.pizzeria.ax, m.pizzeria.ay)];
+    visto[q[0]] = true;
+    for (let i = 0; i < q.length; i++) for (const n of adj[q[i]]) if (!visto[n]) { visto[n] = true; q.push(n); }
+    check('tutte le strade del paese sono collegate', q.length === m.nodi.length,
+      q.length + ' nodi su ' + m.nodi.length);
+
+    let irraggiungibili = 0, fuoriStrada = 0;
+    m.indirizzi.forEach((ind) => {
+      if (!visto[vicino(ind.ax, ind.ay)]) irraggiungibili++;
+      // il punto di accosto deve stare sull'asfalto, non in mezzo al prato
+      let d = Infinity;
+      m.strade.forEach((st) => {
+        for (let i = 1; i < st.punti.length; i++) {
+          const a = st.punti[i - 1], b = st.punti[i];
+          const dx = b[0] - a[0], dy = b[1] - a[1];
+          const l2 = dx * dx + dy * dy || 1;
+          let t = ((ind.ax - a[0]) * dx + (ind.ay - a[1]) * dy) / l2;
+          t = Math.max(0, Math.min(1, t));
+          d = Math.min(d, Math.hypot(ind.ax - (a[0] + dx * t), ind.ay - (a[1] + dy * t)));
         }
-      }
-      s.alberi.forEach((t) => {
-        if (L.some((p) => Math.hypot(p.x - t.x, p.y - t.y) < s.larghezza / 2 + t.r)) alberiSuStrada++;
       });
-      for (let k = 1; k < s.porte.length; k++) if (s.porte[k] <= s.porte[k - 1]) porteDisordinate++;
-      if (s.porte[s.porte.length - 1] < L.length - 5) porteDisordinate++;
-      if (s.lunghezza < lunghezzaPrec) nonCrescenti++;
-      lunghezzaPrec = s.lunghezza;
-      if (s.lunghezza < 1800 + lv * 200) corti++;
-    }
-    check('il percorso non si incrocia mai', incroci === 0, incroci + ' coppie di tratti sovrapposti');
-    check('gli alberi stanno fuori dall\'asfalto', alberiSuStrada === 0, alberiSuStrada + ' sulla strada');
-    check('le porte sono in ordine e l\'ultima è l\'arrivo', porteDisordinate === 0);
-    check('i percorsi si allungano col livello, senza sacche', nonCrescenti === 0 && corti === 0,
-      nonCrescenti + ' accorciamenti, ' + corti + ' percorsi corti');
+      if (d > 1) fuoriStrada++;
+    });
+    check('ogni civico è raggiungibile per strada', irraggiungibili === 0, irraggiungibili + ' isolati');
+    check('e ci si accosta stando sull\'asfalto', fuoriStrada === 0, fuoriStrada + ' accessi fuori strada');
+    check('la mappa dichiara la propria fonte', !!m.fonte, m.fonte);
   }
 
-  // la prova speciale N è sempre la stessa: si impara
+  /* Lo stesso turno è sempre lo stesso: un paese si impara, e imparare deve
+     servire. Turni diversi sono diversi, altrimenti non si salirebbe. */
   {
-    const a = makeGame(def, util, 6).game.state(), b = makeGame(def, util, 6).game.state();
-    const c = makeGame(def, util, 7).game.state();
-    const uguali = a.linea.every((p, i) => p.x === b.linea[i].x && p.y === b.linea[i].y);
-    const diversi = a.linea.length !== c.linea.length || a.linea.some((p, i) => p.x !== c.linea[i].x);
-    check('stesso livello, stesso percorso', uguali);
-    check('livello diverso, percorso diverso', diversi);
+    const a = makeGame(def, util, 5).game.state().carico;
+    const b = makeGame(def, util, 5).game.state().carico;
+    const c = makeGame(def, util, 6).game.state().carico;
+    const eti = (x) => x.map((p) => p.via + ' ' + p.civico).join(', ');
+    check('lo stesso turno ha sempre gli stessi indirizzi', eti(a) === eti(b), eti(a));
+    check('turni diversi, indirizzi diversi', eti(a) !== eti(c));
   }
 
-  /* Il tempo massimo viene da un giro ideale moltiplicato per un margine che
-     si stringe: è la leva della difficoltà, e deve stringersi davvero. */
-  {
-    const m1 = makeGame(def, util, 1).game.state(), m10 = makeGame(def, util, 10).game.state();
-    const r1 = m1.tempoMax / m1.tempoIdeale, r10 = m10.tempoMax / m10.tempoIdeale;
-    check('il margine sul giro ideale si stringe col livello', r1 > r10 && r10 >= 1.05,
-      r1.toFixed(2) + '× -> ' + r10.toFixed(2) + '×');
-  }
-
-  /* Il colore: durante il conto alla rovescia ◀ ▶ lo cambiano; in corsa
-     sterzano e basta. */
-  {
-    const g = makeGame(def, util, 1);
-    const c0 = g.game.state().colore;
-    g.input.press('right');
-    g.game.update(DT);
-    const c1 = g.game.state().colore;
-    check('durante il conto alla rovescia ▶ cambia colore', c1 === (c0 + 1) % 9, c0 + ' -> ' + c1);
-    dopoIlVia(g);
-    g.input.press('right');
-    for (let i = 0; i < 10; i++) g.game.update(DT);
-    check('in corsa ▶ non tocca il colore', g.game.state().colore === c1);
-  }
-
-  /* La fisica: da fermi lo sterzo non gira, il gas accelera, il freno ferma,
-     l'erba frena da sola e non fa correre. */
+  /* Il calore è il tempo del gioco: scende sempre, anche da fermi. Senza
+     questa regola restare immobili sarebbe gratis. */
   {
     const g = makeGame(def, util, 1);
     dopoIlVia(g);
-    const h0 = g.game.state().auto.h;
-    g.input.held.left = true;
-    for (let i = 0; i < 60; i++) g.game.update(DT);
-    check('da fermi lo sterzo non gira il muso', Math.abs(g.game.state().auto.h - h0) < 0.001);
-    g.input.held.left = false;
-    g.input.held.up = true;
-    for (let i = 0; i < 60; i++) g.game.update(DT);
-    const v1 = g.game.state().auto.velocita;
-    check('il gas accelera', v1 > 120, Math.round(v1) + ' px/s dopo un secondo');
-    g.input.held.up = false;
-    g.input.held.down = true;
-    const fermata = runUntil(g.game, () => g.game.state().auto.velocita <= 1, 3);
-    check('il freno ferma l\'auto', fermata);
-    g.input.held.down = false;
-
-    /* Sull'erba: si esce di strada e si tiene il gas per tre secondi. La
-       velocità di ingresso non conta — sull'asfalto si arriva a 300 e l'erba
-       ci mette un po' a mangiarsela — conta dove si assesta. */
-    const g2 = makeGame(def, util, 1);
-    dopoIlVia(g2);
-    g2.input.held.up = true;
-    for (let i = 0; i < 30; i++) g2.game.update(DT);
-    g2.input.held.right = true;
-    runUntil(g2.game, () => !g2.game.state().inStrada, 4);
-    g2.input.held.right = false;
-    runUntil(g2.game, () => false, 3);
-    const erba = g2.game.state();
-    check('sull\'erba non si corre', !erba.inStrada && erba.auto.velocita > 30 && erba.auto.velocita < 140,
-      Math.round(erba.auto.velocita) + ' px/s a gas aperto' + (erba.inStrada ? ' (ma è tornato sull\'asfalto)' : ''));
-  }
-
-  /* Il cronometro: un buon pilota arriva in tempo e vince; chi non fa niente
-     perde allo scadere, e non un attimo prima. */
-  {
-    const g = makeGame(def, util, 1);
-    const esito = runUntil(g.game, () => !!g.events.outcome, 60, guida(g, { reazione: 0.1, errore: 8, ardimento: 1 }));
-    check('un buon pilota vince la prima prova', esito && g.events.outcome === 'win',
-      g.events.outcome + ' con ' + g.game.state().tempo + 's di margine');
-    check('e passa tutte le porte', g.game.state().prossimaPorta === g.game.state().porte.length);
+    const prima = g.game.state().carico[0].calore;
+    runUntil(g.game, () => false, 5);
+    const dopo = g.game.state().carico[0].calore;
+    check('il calore scende anche stando fermi', dopo < prima - 0.02,
+      Math.round(prima * 100) + '% -> ' + Math.round(dopo * 100) + '%');
 
     const f = makeGame(def, util, 1);
-    const max = f.game.state().tempoMax;
-    let t = 0;
-    runUntil(f.game, () => { t += DT; return !!f.events.outcome; }, 90);
-    check('restando fermi il tempo scade e si perde', f.events.outcome === 'lose');
-    check('e scade quando dice il cronometro', Math.abs(t - (max + CONTO)) < 0.5,
-      t.toFixed(1) + 's contro ' + (max + CONTO).toFixed(1));
+    const perso = runUntil(f.game, () => !!f.events.outcome, 300);
+    check('e restando fermi il turno si perde', perso && f.events.outcome === 'lose',
+      f.game.state().freddaDa || '');
   }
 
-  // e si parte da un livello alto senza aver fatto i precedenti
+  /* Non si consegna passando: bisogna accostare. Si tiene il gas schiacciato
+     puntando il civico e si guarda cosa succede — passare sotto casa a
+     cinquanta non deve valere una consegna. Fermarsi contro un muro sì: è pur
+     sempre fermarsi, e il test guarda la velocità nell'istante in cui la
+     consegna avviene, non le intenzioni di chi guidava. */
   {
-    const g = makeGame(def, util, 9);
-    const esito = runUntil(g.game, () => !!g.events.outcome, 120, guida(g, { reazione: 0.1, errore: 8, ardimento: 1 }));
-    check('la prova 9 si può vincere partendo da lì', esito && g.events.outcome === 'win', g.events.outcome);
+    const g = makeGame(def, util, 1);
+    dopoIlVia(g);
+    let passatoVeloce = false, consegneVeloci = 0, consegne = 0;
+    let fattePrec = 0, velocitaPrec = 0;
+    runUntil(g.game, () => false, 60, () => {
+      const s = g.game.state();
+      /* L'aumento di `fatte` si vede al giro dopo, quindi la velocità della
+         consegna è quella del fotogramma precedente: confrontare lo stato con
+         se stesso dentro la stessa chiamata non mostrerebbe mai niente. */
+      if (s.fatte > fattePrec) {
+        fattePrec = s.fatte;
+        consegne++;
+        if (s.ultimaConsegna && s.ultimaConsegna.velocita > 4.6) consegneVeloci++;
+      }
+      if (!s.obiettivo) { velocitaPrec = Math.abs(s.auto.velocita); return; }
+      const a = s.auto;
+      let ang = Math.atan2(s.obiettivo.y - a.y, s.obiettivo.x - a.x) - a.h;
+      while (ang > Math.PI) ang -= 2 * Math.PI;
+      while (ang < -Math.PI) ang += 2 * Math.PI;
+      g.input.held.left = ang < -0.06;
+      g.input.held.right = ang > 0.06;
+      g.input.held.up = true;
+      g.input.held.down = false;
+      const d = Math.hypot(s.obiettivo.x - a.x, s.obiettivo.y - a.y);
+      if (d < 12 && Math.abs(a.velocita) > 6) passatoVeloce = true;
+      velocitaPrec = Math.abs(a.velocita);
+    });
+    check('si passa sotto casa a tutta velocità senza consegnare',
+      passatoVeloce && consegneVeloci === 0,
+      passatoVeloce ? consegne + ' consegne, ' + consegneVeloci + ' in corsa' : 'non ci è arrivato');
+  }
+
+  /* Il patto del gioco: seguendo il navigatore si arriva in tempo. Il budget
+     è calcolato sul giro «alla fermata più vicina», che è quello che il gioco
+     stesso suggerisce — se non bastasse, il gioco prometterebbe un margine
+     che non dà. */
+  {
+    const g = makeGame(def, util, 1);
+    const pilota = guida(g, { reazione: 0.1, errore: 8, ardimento: 1 });
+    /* Qui le consegne avvengono davvero, quindi è qui che si controlla a che
+       velocità: la regola «si consegna da fermi» va misurata sulle consegne
+       vere, non su un giro in cui non ne succede nessuna. */
+    let veloci = 0, viste = 0;
+    const vinto = runUntil(g.game, () => !!g.events.outcome, 300, () => {
+      const prima = g.game.state();
+      pilota();
+      // il passo lo fa runUntil subito dopo: si confronta al giro successivo
+      if (prima.fatte > viste) {
+        viste = prima.fatte;
+        if (prima.ultimaConsegna && prima.ultimaConsegna.velocita > 4.6) veloci++;
+      }
+    });
+    const s = g.game.state();
+    check('seguendo il navigatore il primo turno si chiude', vinto && g.events.outcome === 'win',
+      s.fatte + '/' + s.consegne + (s.freddaDa ? ' — fredda in ' + s.freddaDa : ''));
+    check('e ogni consegna avviene al passo d\'uomo', veloci === 0, viste + ' consegne, ' + veloci + ' in corsa');
+
+    const g8 = makeGame(def, util, 8);
+    const v8 = runUntil(g8.game, () => !!g8.events.outcome, 420, guida(g8, { reazione: 0.1, errore: 8, ardimento: 1 }));
+    check('e anche l\'ottavo, partendo da lì', v8 && g8.events.outcome === 'win',
+      g8.game.state().fatte + '/' + g8.game.state().consegne);
+  }
+
+  /* Le pizze del carico dopo si raffreddano sul bancone mentre torni a
+     prenderle: è il motivo per cui il tempo del giro comprende il rientro. */
+  {
+    const g = makeGame(def, util, 3);
+    const pilota = guida(g, { reazione: 0.1, errore: 8, ardimento: 1 });
+    // si consegna il primo carico, poi ci si ferma e si guarda il bancone
+    const consegnato = runUntil(g.game, () => g.game.state().carico.some((c) => !c.inMano), 200, pilota);
+    if (consegnato) {
+      const prima = g.game.state().carico.filter((c) => !c.inMano)[0].calore;
+      runUntil(g.game, () => false, 6);
+      const bancone = g.game.state().carico.filter((c) => !c.inMano)[0];
+      check('le pizze in attesa si raffreddano sul bancone',
+        bancone && bancone.calore < prima - 0.02,
+        Math.round(prima * 100) + '% -> ' + Math.round((bancone ? bancone.calore : 0) * 100) + '%');
+    } else {
+      check('le pizze in attesa si raffreddano sul bancone', false, 'nessun carico in attesa osservato');
+    }
   }
 }
 

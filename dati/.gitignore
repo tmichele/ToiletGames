@@ -1,0 +1,4 @@
+# L'export di OpenStreetMap resta locale: è dato altrui e ingombrante.
+# In repository ci va la mappa generata (assets/js/mappe/), non la materia prima.
+*.osm
+*.geojson

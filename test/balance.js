@@ -11,10 +11,14 @@
 
 const { loadGames, makeInput, SFX } = require('./sandbox');
 const { creaPilota } = require('./orda-bot');
-const { creaPilota: creaPilotaRally } = require('./rally-bot');
+const { creaPilota: creaPilotaPizze } = require('./pizze-bot');
 
 const DT = 1 / 60;            // passo fisso di simulazione
-const MAX_SECONDS = 240;      // taglio di sicurezza per partite che non finiscono
+/* Taglio di sicurezza per le partite che non finiscono. Sta a 420 per le
+   Pizze: un turno di consegne dura qualche minuto, e a 240 i turni alti
+   venivano contati come stalli quando erano solo lunghi. Gli altri giochi
+   finiscono molto prima, quindi non cambia i loro numeri. */
+const MAX_SECONDS = 420;
 const MATCHES = 40;           // partite per livello e per profilo
 
 
@@ -175,16 +179,16 @@ const BOTS = {
     return function (s, dt) { pilota(s, api.input.stick, dt); };
   },
 
-  /* Il pilota del rally sta in test/rally-bot.js, condiviso con regole.js:
-     segue la stessa regola con cui il gioco stima il giro ideale, quindi il
-     tempo massimo è battibile per costruzione. La reazione è l'intervallo fra
-     due decisioni, l'errore fa sbagliare la mira, la velocità della mano
-     diventa l'ardimento: quanto vicino al limite dell'auto si spinge. */
-  rally: (profile) => (api, game) => {
-    const pilota = creaPilotaRally({
+  /* Il pilota delle pizze sta in test/pizze-bot.js, condiviso con regole.js:
+     segue la rotta che il gioco disegna a terra e rallenta sotto casa, perché
+     la consegna si fa da fermi. La reazione è l'intervallo fra due decisioni,
+     l'errore fa sbagliare la mira, la velocità della mano diventa l'ardimento:
+     quanto forte va per il paese. */
+  pizze: (profile) => (api, game) => {
+    const pilota = creaPilotaPizze({
       reazione: profile.reaction,
       errore: profile.error,
-      ardimento: 0.55 + 0.45 * (profile.speed - 240) / 240
+      ardimento: 0.5 + 0.5 * (profile.speed - 240) / 240
     });
     return function (s, dt) { pilota(s, api.input.held, dt); };
   },

@@ -521,78 +521,62 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   check('si spara da soli e i mostri cadono', abbattuti >= 2, abbattuti + ' abbattuti');
   check('il punteggio sale', (await page.evaluate(() => TG.engine.getScore())) > 0);
 
-  // ---- Rally: comandi da guida, colore, cronometro ----
-  console.log('\n[rally]');
-  await page.goto(URL + '#/g/rally');
-  await sleep(400);
+  // ---- Pizze: 3D, comandi da guida, colore, calore ----
+  console.log('\n[pizze]');
+  await page.goto(URL + '#/g/pizze');
+  await sleep(500);
   await page.click('.btn:has-text("Gioca")');
-  await sleep(300);
+  await sleep(400);
   const pedali = await page.$$eval('#touch-controls .guida__btn', (b) => b.map((x) => x.textContent));
-  check('il rally ha volante e pedali',
+  check('le pizze hanno volante e pedali',
     (await page.$$('#touch-controls .volante')).length === 1 &&
     pedali.length === 2 && pedali.indexOf('GAS') >= 0 && pedali.indexOf('FRENO') >= 0,
     'volante + ' + pedali.join(' '));
-  const r0 = await page.evaluate(() => TG.engine.inspect().game);
-  check('si parte col conto alla rovescia', r0.stato === 'conto' && r0.conto > 0);
-  // il colore si sceglie mentre si conta, e resta salvato
+  const z0 = await page.evaluate(() => TG.engine.inspect().game);
+  check('si parte davanti al forno, con le pizze in mano',
+    z0.stato === 'forno' && z0.carico.length >= 1 && z0.carico[0].calore === 1,
+    z0.carico.map((c) => c.via + ' ' + c.civico).join(', '));
+  check('la mappa è quella di Codiverno', !!z0.mappa && z0.mappa.nome === 'Codiverno' && z0.mappa.strade.length > 1,
+    z0.mappa.strade.length + ' vie, fonte ' + z0.fonteMappa);
+
+  // il colore si sceglie mentre le pizze escono dal forno, e resta
   await page.keyboard.press('ArrowRight');
   await sleep(120);
-  const r1 = await page.evaluate(() => TG.engine.inspect().game);
-  check('▶ durante il conto cambia il colore dell\'auto', r1.colore === (r0.colore + 1) % 9, r0.colore + ' -> ' + r1.colore);
-  check('il colore viene salvato', (await page.evaluate(() => TG.storage.get('rally:colore'))) === r1.colore);
-  await sleep(3400);
-  const r2 = await page.evaluate(() => TG.engine.inspect().game);
-  check('al via si corre', r2.stato === 'corsa', r2.stato);
-  // GAS da tastiera: l'auto parte davvero
-  await page.keyboard.down('ArrowUp');
-  await sleep(1200);
-  const r3 = await page.evaluate(() => TG.engine.inspect().game);
-  await page.keyboard.up('ArrowUp');
-  const percorso = Math.hypot(r3.auto.x - r2.auto.x, r3.auto.y - r2.auto.y);
-  check('col gas l\'auto parte', r3.auto.velocita > 100 && percorso > 60,
-    Math.round(r3.auto.velocita) + ' px/s, ' + Math.round(percorso) + ' px');
-  check('il cronometro scorre', r3.tempo < r2.tempo, r2.tempo + ' -> ' + r3.tempo);
-  /* Il volante si gira col pomello: si trascina lungo la corona e la
-     sterzata deve essere analogica — mezzo giro, mezza sterzata — e l'auto
-     deve girare davvero. Lasciato, torna dritto. */
-  const vb = await (await page.$('.volante')).boundingBox();
-  const vcx = vb.x + vb.width / 2, vcy = vb.y + vb.height / 2, vr = vb.width / 2 - 8;
-  const h0 = (await page.evaluate(() => TG.engine.inspect().game)).auto.h;
-  await page.keyboard.down('ArrowUp');
-  await page.mouse.move(vcx, vcy - vr);
-  await page.mouse.down();
-  for (let a = -90; a <= -35; a += 11) {
-    const t = a * Math.PI / 180;
-    await page.mouse.move(vcx + Math.cos(t) * vr, vcy + Math.sin(t) * vr);
-    await sleep(30);
-  }
-  await sleep(500);
-  const vol = await page.evaluate(() => ({ v: TG.input.volante.valore, attivo: TG.input.volante.attivo, h: TG.engine.inspect().game.auto.h }));
-  await page.mouse.up();
-  await page.keyboard.up('ArrowUp');
-  await sleep(250);
-  const volDopo = await page.evaluate(() => TG.input.volante);
-  check('il volante gira col pomello, a metà corsa', vol.attivo && vol.v > 0.35 && vol.v < 0.85, 'valore ' + vol.v.toFixed(2));
-  let giro = vol.h - h0; while (giro > Math.PI) giro -= 2 * Math.PI; while (giro < -Math.PI) giro += 2 * Math.PI;
-  check('e l\'auto sterza a destra', giro > 0.15, 'muso girato di ' + giro.toFixed(2) + ' rad');
-  check('lasciato, il volante torna dritto', !volDopo.attivo && volDopo.valore === 0);
+  const z1 = await page.evaluate(() => TG.engine.inspect().game);
+  check('▶ al forno cambia il colore dell\'auto', z1.colore === (z0.colore + 1) % 9, z0.colore + ' -> ' + z1.colore);
+  check('il colore viene salvato', (await page.evaluate(() => TG.storage.get('pizze:colore'))) === z1.colore);
 
-  // e il tasto a schermo fa lo stesso lavoro del tasto freccia
+  await sleep(3400);
+  const z2 = await page.evaluate(() => TG.engine.inspect().game);
+  check('poi si parte in consegna', z2.stato === 'giro', z2.stato);
+
+  /* Il 3D si disegna davvero: il campo cambia mentre l'auto si muove. Un
+     canvas fermo con l'auto che avanza vorrebbe dire che la scena non è
+     agganciata al mondo. */
+  const q0 = await canvasHash();
+  await page.keyboard.down('ArrowUp');
+  await sleep(2200);
+  const z3 = await page.evaluate(() => TG.engine.inspect().game);
+  await page.keyboard.up('ArrowUp');
+  const q1 = await canvasHash();
+  const fatta = Math.hypot(z3.auto.x - z2.auto.x, z3.auto.y - z2.auto.y);
+  check('col gas l\'auto parte', z3.auto.velocita > 6 && fatta > 8,
+    Math.round(z3.auto.velocita * 3.6) + ' km/h, ' + Math.round(fatta) + ' m');
+  check('la scena 3D si aggiorna guidando', q0 !== q1);
+  check('il calore scende', z3.carico[0].calore < z2.carico[0].calore,
+    Math.round(z2.carico[0].calore * 100) + '% -> ' + Math.round(z3.carico[0].calore * 100) + '%');
+  check('il navigatore ha una rotta verso il civico', z3.rotta.length > 1 && !!z3.obiettivo,
+    z3.rotta.length + ' nodi');
+
+  // il pedale a schermo fa lo stesso lavoro del tasto
   const gasBtn = await page.$('#touch-controls .guida__btn--gas');
   const gb = await gasBtn.boundingBox();
   await page.mouse.move(gb.x + gb.width / 2, gb.y + gb.height / 2);
   await page.mouse.down();
-  await sleep(400);
+  await sleep(350);
   const gasPremuto = await page.evaluate(() => TG.input.isDown('up'));
   await page.mouse.up();
   check('il pedale GAS a schermo accelera', gasPremuto);
-  // il colore sopravvive al ricaricamento
-  await page.goto(URL + '#/g/rally');
-  await sleep(400);
-  await page.click('.btn:has-text("Gioca")');
-  await sleep(200);
-  check('il colore scelto sopravvive al ricaricamento',
-    (await page.evaluate(() => TG.engine.inspect().game.colore)) === r1.colore);
 
   // ---- si riparte sempre dall'ultimo livello raggiunto ----
   console.log('\n[ripartenza]');

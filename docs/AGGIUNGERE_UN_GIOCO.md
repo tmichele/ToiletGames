@@ -217,6 +217,26 @@ Attenzione a un errore facile: se l'avversario simulato ri-sorteggia il proprio
 errore di mira a ogni frame, la media annulla l'errore e l'avversario diventa
 infallibile. L'errore va sorteggiato una volta per scambio e tenuto.
 
+## Dati grossi: le mappe
+
+Se il gioco ha bisogno di un mondo troppo grande per stare nel suo file — il
+paese di Pizze sono duecento nodi di strade, centosessanta edifici e altrettanti
+civici — i dati stanno a parte, in `assets/js/mappe/`, e li **genera uno
+strumento**: `tools/mappa.js` scrive `assets/js/mappe/codiverno.js` da un export
+di OpenStreetMap, oppure lo ricostruisce se l'export non c'è. Tre regole che
+valgono per qualunque dato generato:
+
+- il file dice in testa che è generato e con che comando si rifà, perché prima o
+  poi qualcuno lo aprirà e vorrà correggerlo a mano;
+- il dato porta con sé la propria **fonte** (`fonte: 'OpenStreetMap'` o
+  `'ricostruzione'`) e il gioco la mostra: una mappa inventata spacciata per
+  vera è peggio di una mappa dichiaratamente finta;
+- il formato è lo stesso qualunque sia la sorgente, così il gioco non sa da dove
+  arrivano i dati e si può passare dall'uno all'altro senza toccarlo.
+
+`test/sandbox.js` carica `assets/js/mappe/` prima dei giochi, quindi in test la
+mappa è già pronta quando `create()` viene chiamata.
+
 ## Verificare le meccaniche
 
 `test/regole.js` gira sulla stessa sandbox di `balance.js` (`test/sandbox.js`) e

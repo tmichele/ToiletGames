@@ -26,6 +26,14 @@ function loadGames() {
   const defs = {};
   ctx.TG.registry = { register: (def) => { defs[def.id] = def; } };
 
+  /* Le mappe sono dati, non giochi: si caricano prima, perché un gioco che
+     ne usa una la cerca già pronta. */
+  const mappe = path.join(ROOT, 'assets/js/mappe');
+  if (fs.existsSync(mappe)) {
+    fs.readdirSync(mappe).filter((f) => f.endsWith('.js'))
+      .forEach((f) => run(path.join('assets/js/mappe', f)));
+  }
+
   fs.readdirSync(path.join(ROOT, 'assets/js/games'))
     .filter((f) => f.endsWith('.js'))
     .forEach((f) => run(path.join('assets/js/games', f)));
