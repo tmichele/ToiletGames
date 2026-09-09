@@ -519,6 +519,9 @@ function numeraCivici(strade, edifici, conTag, nodi) {
       if (!eraReale) prossimo[chiave] += 2;
       v.e.civico = civico;
       v.e.via = nome;
+      // verso dove guarda la porta: il punto della strada davanti a casa
+      v.e.pax = r1(v.best.ax);
+      v.e.pay = r1(v.best.ay);
       indirizzi.push({
         via: nome, civico: civico, x: v.e.x, y: v.e.y,
         ax: r1(v.best.ax), ay: r1(v.best.ay), edificio: v.i, reale: eraReale

@@ -1074,6 +1074,78 @@ console.log('\n[pizze: consegne a Codiverno]');
     check('e tenendo ◀ gira a sinistra', sx < -0.2, sx.toFixed(2));
   }
 
+  /* Il paese è vivo: semafori che si alternano e traffico che gira. Sono le
+     due cose che rendono il tempo di percorrenza una faccenda di guida e non
+     di sola distanza, quindi vanno verificate come regole, non guardate. */
+  {
+    const g = makeGame(def, util, 1);
+    dopoIlVia(g);
+    const s0 = g.game.state();
+    check('agli incroci grossi ci sono i semafori', s0.semafori.length >= 3, s0.semafori.length + ' incroci');
+
+    // in un ciclo intero entrambi gli assi devono avere il verde
+    const visti = {};
+    runUntil(g.game, () => false, 40, () => {
+      const s = g.game.state();
+      if (s.semafori.length) visti[s.semafori[0].verde] = true;
+    });
+    check('e si alternano da soli', visti[0] && visti[1], Object.keys(visti).join(' e '));
+
+    // il traffico gira, e tiene la destra invece della mezzeria
+    const prima = g.game.state().traffico.map((v) => ({ x: v.x, y: v.y }));
+    runUntil(g.game, () => false, 6);
+    const dopo = g.game.state().traffico;
+    let mosse = 0;
+    dopo.forEach((v, i) => { if (prima[i] && Math.hypot(v.x - prima[i].x, v.y - prima[i].y) > 5) mosse++; });
+    check('il traffico circola', dopo.length >= 4 && mosse >= dopo.length - 2,
+      mosse + ' auto su ' + dopo.length + ' si sono mosse in sei secondi');
+
+    /* La destra si misura sulla mezzeria: il grafo è la riga bianca, e chi ci
+       viaggia sopra prende in pieno il primo che arriva in senso opposto. */
+    const m = g.game.state().mappa;
+    let aDestra = 0, contate = 0;
+    dopo.forEach((v) => {
+      let best = null;
+      m.strade.forEach((st) => {
+        for (let i = 1; i < st.punti.length; i++) {
+          const a = st.punti[i - 1], b = st.punti[i];
+          const dx = b[0] - a[0], dy = b[1] - a[1];
+          const l2 = dx * dx + dy * dy || 1;
+          let t = ((v.x - a[0]) * dx + (v.y - a[1]) * dy) / l2;
+          t = Math.max(0, Math.min(1, t));
+          const d = Math.hypot(v.x - (a[0] + dx * t), v.y - (a[1] + dy * t));
+          if (!best || d < best.d) best = { d, a, b, px: a[0] + dx * t, py: a[1] + dy * t };
+        }
+      });
+      if (!best || best.d < 0.4) return;      // in mezzo a un incrocio non si sa dire
+      contate++;
+      // da che parte sta rispetto al proprio verso di marcia
+      const lato = Math.cos(v.h) * (v.y - best.py) - Math.sin(v.h) * (v.x - best.px);
+      if (lato < 0) aDestra++;
+    });
+    check('e tiene la destra', contate === 0 || aDestra >= contate - 1,
+      aDestra + ' su ' + contate + ' nella propria corsia');
+  }
+
+  /* Il rosso ferma anche loro: prima o poi qualcuno resta fermo sotto un
+     semaforo. Se non succedesse, il rosso sarebbe una decorazione e passarci
+     non costerebbe niente a nessuno. */
+  {
+    const g = makeGame(def, util, 1);
+    dopoIlVia(g);
+    let fermaAlRosso = false;
+    runUntil(g.game, () => fermaAlRosso, 80, () => {
+      const s = g.game.state();
+      s.traffico.forEach((v) => {
+        if (v.vel > 1.2) return;
+        s.semafori.forEach((sem) => {
+          if (Math.hypot(sem.x - v.x, sem.y - v.y) < 14) fermaAlRosso = true;
+        });
+      });
+    });
+    check('il traffico si ferma ai semafori', fermaAlRosso);
+  }
+
   /* Il calore è il tempo del gioco: scende sempre, anche da fermi. Senza
      questa regola restare immobili sarebbe gratis. */
   {

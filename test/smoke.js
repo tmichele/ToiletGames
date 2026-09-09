@@ -567,6 +567,16 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     Math.round(z2.carico[0].calore * 100) + '% -> ' + Math.round(z3.carico[0].calore * 100) + '%');
   check('il navigatore ha una rotta verso il civico', z3.rotta.length > 1 && !!z3.obiettivo,
     z3.rotta.length + ' nodi');
+  /* Il paese è vivo anche nel browser: semafori che si alternano e traffico
+     che gira. In sandbox è già verificato — qui si controlla che arrivi fino
+     allo schermo, perché una regola che vale solo fuori dal browser non l'ha
+     mai vista nessuno. */
+  check('ci sono semafori e traffico', z3.semafori.length >= 3 && z3.traffico.length >= 4,
+    z3.semafori.length + ' semafori, ' + z3.traffico.length + ' auto');
+  const primo = z3.traffico.map((v) => v.x + ',' + v.y).join('|');
+  await sleep(1200);
+  const z4 = await page.evaluate(() => TG.engine.inspect().game);
+  check('il traffico si muove davvero', z4.traffico.map((v) => v.x + ',' + v.y).join('|') !== primo);
 
   /* Il verso dello sterzo, premuto col mouse sul tasto vero: tenendo ▶ il muso
      deve andare verso la destra di chi guida. È il bug che è passato fino a

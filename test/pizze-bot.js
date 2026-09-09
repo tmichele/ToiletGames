@@ -70,12 +70,19 @@ function creaPilota(opt) {
         const avanti = 8 + v * 0.9;
         let percorsa = d0;
         mira = { x: s.rotta[i0][0], y: s.rotta[i0][1] };
+        let dir = null;
         for (let i = i0 + 1; i < s.rotta.length; i++) {
           const p = s.rotta[i], q = s.rotta[i - 1];
-          percorsa += Math.hypot(p[0] - q[0], p[1] - q[1]);
+          const l = Math.hypot(p[0] - q[0], p[1] - q[1]) || 1;
+          percorsa += l;
           mira = { x: p[0], y: p[1] };
+          dir = { x: (p[0] - q[0]) / l, y: (p[1] - q[1]) / l };
           if (percorsa >= avanti) break;
         }
+        /* Si punta un metro e mezzo a destra della mezzeria: la propria
+           corsia. Guidare sulla riga bianca in un paese con il traffico vuol
+           dire prendere in pieno il primo che arriva in senso opposto. */
+        if (dir) { mira = { x: mira.x + dir.y * 1.5, y: mira.y - dir.x * 1.5 }; }
       }
 
       let ang = Math.atan2(mira.y - a.y, mira.x - a.x) - a.h;
@@ -90,7 +97,18 @@ function creaPilota(opt) {
       let voluta = 15.5 * ardimento * (1.05 - Math.min(1, Math.abs(ang)) * 0.85);
       if (dObiettivo < 30) voluta = Math.min(voluta, 3 + dObiettivo * 0.25);
       if (dObiettivo < 12) voluta = 1.6;
-      gasVoluto = Math.max(1.2, voluta);
+
+      /* Il rosso e la coda: `davanti` è quello che vede chi guida guardando la
+         strada. La velocità di sicurezza è quella da cui si riesce ancora a
+         fermarsi nello spazio che resta — sotto zero vuol dire fermarsi e
+         basta. Senza questo il pilota entrava negli incroci col rosso e
+         raccoglieva fiancate: la colonna della difficoltà misurava gli
+         incidenti, non la guida. */
+      if (s.davanti) {
+        const spazio = Math.max(0, s.davanti.distanza);
+        voluta = Math.min(voluta, Math.sqrt(2 * 8 * spazio));
+      }
+      gasVoluto = Math.max(s.davanti && s.davanti.distanza < 1 ? 0 : 1.2, voluta);
     }
 
     /* `sterzo` è l'angolo dal muso al punto di mira, in convenzione

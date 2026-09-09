@@ -17,7 +17,7 @@ da `file://`) e giochi.
 | 🔴 **Forza 4** | Quattro di fila, vs CPU o in due | La CPU guarda sempre più mosse avanti (minimax) e smette di svarionare |
 | 🔢 **Tessere** | Rompicapo scorrevole (il «quindici») | Griglia da 3×3 (livelli 1-2) a 4×4 e 5×5, mescolamento più profondo; il tempo cresce con la griglia — un paio di minuti per il 3×3, quattro per il 4×4, oltre sei per il 5×5 |
 | 🧭 **Labirinto** | Prima persona, con una mappa che si dimentica | Labirinto più grande, memoria della mappa più corta (24s al 1° livello, 10s al 10°), meno alberi, vista più corta |
-| 🍕 **Pizze** | Consegne a domicilio in 3D, per le strade vere di Codiverno | Turni più lunghi e più lontani dalla pizzeria, più pizze per giro (una fino al 2°, due fino al 4°, poi tre) e un margine di calore che si stringe: dal +54% sul tempo di un buon guidatore al primo turno al +5% del decimo |
+| 🍕 **Pizze** | Consegne a domicilio in 3D, per le strade vere di Codiverno, fra traffico e semafori | Turni più lunghi e più lontani dalla pizzeria, più pizze per giro (una fino al 2°, due fino al 4°, poi tre) e un margine di calore che si stringe: dal +54% sul tempo di un buon guidatore al primo turno al +5% del decimo |
 | 👾 **Orda** | Sparatutto dall'alto in un dungeon di camere e corridoi: i mostri dormono finché non ti vedono | Ondate più numerose, mostri più veloci e con la vista più lunga (quindi se ne sveglia di più tutti insieme), tipi nuovi che si aggiungono ai vecchi — scattanti dal 2°, corazzati dal 3°, tiratori dal 4°, gemelli che si sdoppiano dal 7° — e un boss ogni cinque livelli |
 
 Il **Labirinto** si gioca in prima persona con il joystick. La pianta non è mai
@@ -113,6 +113,26 @@ più corto di quello suggerito resta possibile, e il calore che avanza diventa
 punti: dal 5° livello si esce con tre pizze insieme, e allora conta soprattutto
 **in che ordine** le consegni.
 
+Il paese è vivo: **qualche auto gira** e ai cinque incroci grossi c'è il
+**semaforo**. Non sono decorazione. Il rosso costa secondi e i secondi sono
+calore, quindi il tempo concesso li mette in conto — sette secondi per ogni
+semaforo che il percorso attraversa, che è il mezzo ciclo medio più il
+rallentamento: senza, il gioco farebbe perdere il turno a chi si ferma col
+rosso, cioè a chi fa la cosa giusta. Passare col rosso si può, e come nella
+vita: rischi la fiancata di chi ha verde, e se ti va bene resta la **multa** —
+punti in meno, non turno finito. Il traffico **tiene la destra** e si ferma ai
+semafori; il grafo delle strade è la mezzeria, quindi chi ci viaggia sopra si
+prende in pieno il primo che arriva in senso opposto.
+
+Si guida con un **modello a bicicletta**: l'angolo delle ruote decide la
+rotazione attraverso il passo (ω = v·tan δ / passo), e da quella riga vengono
+gratis tre cose che prima andavano finte — da fermi non si gira, in retromarcia
+si gira dall'altra parte, e più si va forte più il raggio si allarga a parità di
+sterzo. L'aderenza laterale **satura**: le gomme reggono fino a un tetto di
+forza, oltre quello si scivola, e in frenata l'avantreno morde di più. È il
+motivo per cui in un tornante conviene entrare frenando e uscire di gas, e per
+cui adesso arrivare in curva piano o forte non è la stessa cosa.
+
 Le pizze si raffreddano **anche mentre sei fermo**, comprese quelle che ti
 aspettano sul bancone per il giro dopo: senza questa regola chi resta immobile
 dopo una consegna non perderebbe mai, ed è l'invariante che la suite misura per
@@ -120,10 +140,16 @@ prima. Per consegnare bisogna **accostare** — un faro di luce indica il civico
 le frecce sull'asfalto portano lì, ma passare sotto casa a cinquanta non vale
 una consegna. Fuori strada si arranca e le case non si attraversano.
 
-La scena è **3D disegnata sul canvas 2D**: proiezione prospettica a mano, muri
-come scatole estruse, ordinamento del pittore, taglio dei poligoni sul piano
-vicino. Niente WebGL, come il raycasting del Labirinto — così gira dove gira il
-resto della suite.
+La scena è **3D disegnata sul canvas 2D**: proiezione prospettica a mano, tutto
+fatto di scatole (case, auto, pali dei semafori), ordinamento del pittore,
+taglio dei poligoni sul piano vicino. Le case hanno finestre e la porta sul
+muro che guarda la strada — il generatore sa quale, perché è lo stesso punto da
+cui si consegna — e si disegnano solo entro novanta metri: più in là non si
+distinguerebbero, e sarebbero fotogrammi buttati. L'auto è fatta di telaio,
+abitacolo coi vetri, quattro ruote che sterzano davvero e stop che si accendono
+in frenata; le auto del traffico usano lo stesso disegno con un altro colore.
+Niente WebGL, come il raycasting del Labirinto — così gira dove gira il resto
+della suite, a sessanta fotogrammi al secondo con cinquecento edifici in mappa.
 
 **La mappa è Codiverno vero.** Viene da un export di OpenStreetMap — © i
 contributori di OpenStreetMap, ODbL — ritagliato attorno al nodo del paese e

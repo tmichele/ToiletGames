@@ -42,9 +42,10 @@ var ACCEL = 7.2;           // m/s²
 var FRENO = 11;
 var RETRO_MAX = 3.5;
 var ATTRITO = 2.6;
-var STERZO = 1.9;          // rad/s a fondo sterzo, con le gomme che tengono
-var GRIP_STRADA = 6.5;
-var GRIP_PRATO = 2.2;
+var STERZO_MAX = 0.62;     // rad: angolo massimo delle ruote anteriori
+var PASSO_AUTO = 2.5;      // m fra gli assi: con lo sterzo decide il raggio
+var GRIP_STRADA = 26;      // m/s²: forza laterale che le gomme reggono
+var GRIP_PRATO = 9;
 var AUTO_L = 4.1, AUTO_W = 1.75, AUTO_R = 1.5;
 
 var VEL_CROCIERA = 9;      // m/s: usata solo quando una rotta non esiste
@@ -55,12 +56,31 @@ var VEL_CROCIERA = 9;      // m/s: usata solo quando una rotta non esiste
    il modello. Il calore si concede su quel tempo lì, non su quello teorico:
    altrimenti «margine 2×» vorrebbe dire in realtà «1,5×», e il numero scritto
    nella schermata del livello sarebbe una bugia. */
-var ATTRITO_REALE = 1.4;
+var ATTRITO_REALE = 1.65;
 var SOSTA = 3.5;           // s per fermarsi, scendere e consegnare
 var RAGGIO_CONSEGNA = 13;  // m dal civico
 var VEL_CONSEGNA = 4.5;    // m/s: sopra questa non si consegna, si passa e basta
 var RAGGIO_PIZZERIA = 16;
 var CONTO = 3.2;           // s di attesa al forno, dove si sceglie il colore
+
+/* Semafori e traffico. Il paese non è vuoto: qualche auto gira, e agli
+   incroci grossi c'è il semaforo. Non sono decorazione — il rosso costa
+   secondi, e i secondi sono calore. Passare col rosso si può, ed è come nella
+   vita: rischi la fiancata di chi ha verde, e se ti va bene resta la multa. */
+var SEM_CICLO = 36;        // s: 15 verde, 3 giallo, per ciascuno dei due assi
+var SEM_QUANTI = 5;        // incroci semaforizzati in tutto il paese
+var SEM_DISTANZA = 170;    // m minimi fra un semaforo e l'altro
+var SEM_STOP = 6;          // m prima dell'incrocio dove ci si ferma
+/* Sette auto, non dodici. Con dodici il paese sembrava vivo e si guidava in
+   colonna: chi consegna resta dietro a chi passeggia, e in una via a una
+   corsia non si sorpassa. Sette bastano a incontrarne una a ogni due incroci,
+   che è quello che succede a Codiverno di sera. */
+var TRAFFICO = 7;          // auto in circolazione attorno a te
+var TRAFFICO_VICINO = 340; // m: oltre, l'auto viene rimessa in circolo vicino
+var TRAFFICO_VEL = 11;     // m/s: come va la gente del posto
+var CORSIA = 1.7;          // m a destra della mezzeria: la propria corsia
+var SEM_ATTESA = 7;        // s che un semaforo costa, in media, sul giro ideale
+var MULTA = 30;            // punti per livello, se passi col rosso
 
 /* Vista: la telecamera sta dietro e sopra l'auto e guarda avanti. L'altezza è
    quella che fa vedere oltre la siepe del vicino senza diventare una mappa. */
@@ -183,6 +203,7 @@ function distanzaTra(a, b) { return daNodo(a).dist[b]; }
    dati per buoni, e ogni consegna arrivava fredda. Il tempo concesso deve
    venire dalla strada che c'è, non da una media decisa a tavolino. */
 var cacheTempo = {};
+var nodoSemaforico = {};     // nodo -> true, riempita quando si piazzano i semafori
 function tempoPercorso(a, b) {
   var chiave = a + '>' + b;
   if (cacheTempo[chiave] != null) return cacheTempo[chiave];
@@ -212,6 +233,11 @@ function tempoPercorso(a, b) {
     t = 0;
     for (i = 0; i < ds.length; i++) t += ds[i] / Math.max(2, (v[i] + v[i + 1]) / 2);
     t *= ATTRITO_REALE;
+    /* Ogni semaforo sul percorso è tempo che nessuna guida può recuperare: in
+       media mezzo ciclo di rosso più il rallentamento. Prometterne il calore
+       senza contarli vorrebbe dire far perdere il turno a chi si ferma col
+       rosso — cioè a chi fa la cosa giusta. */
+    for (i = 0; i < nodi.length; i++) if (nodoSemaforico[nodi[i]]) t += SEM_ATTESA;
   }
   cacheTempo[chiave] = t;
   return t;
@@ -360,7 +386,10 @@ TG.registry.register({
     'faro di luce lo indica, le frecce sull\'asfalto ti portano lì. Poi torna ' +
     'in pizzeria per il carico dopo. Dal 4° livello ne porti due per giro, dal ' +
     '7° tre: contano i punti, ma conta soprattutto <b>in che ordine</b> le ' +
-    'consegni. Fuori strada si arranca e le siepi non si attraversano. ' +
+    'consegni. Fuori strada si arranca e le case non si attraversano. ' +
+    '<b>Il paese è vivo:</b> qualche auto gira, e ai semafori il rosso va ' +
+    'aspettato — il tempo per farlo è già compreso nel calore. Passarci ' +
+    'costa una multa, e la fiancata di chi ha verde. ' +
     '<b>Il colore dell\'auto</b> si sceglie mentre le pizze escono dal forno.',
 
   levelInfo: function (level) {
@@ -383,6 +412,7 @@ TG.registry.register({
     var cfg, auto, stato, conto, colore;
     var consegne, carico, fatte, prossimoCarico, acc, finito, note, urti, scossa;
     var cam, bordi, limiti, obiettivo, rottaNodi, ricalcolo, ultimoBeep, freddaDa, ultimaConsegna;
+    var semafori, traffico, tempoSem, ultimoIncrocio, multe, davanti;
 
     function leggiColore() {
       var v = store ? store.get(CHIAVE_COLORE, null) : null;
@@ -421,6 +451,273 @@ TG.registry.register({
           limiti.y0 = Math.min(limiti.y0, p[1]); limiti.y1 = Math.max(limiti.y1, p[1]);
         });
       });
+    }
+
+    /* ---------- semafori ----------
+
+       Si mettono agli incroci veri (tre strade o più), distanti fra loro, e
+       ognuno divide le strade che ci arrivano in due assi secondo la
+       direzione: chi arriva da nord-sud ha verde quando chi arriva da est-ovest
+       ha rosso. Sono sempre gli stessi incroci, partita dopo partita — un
+       paese si impara anche così. */
+    function preparaSemafori() {
+      var g = grafo();
+      var grado = g.nodi.map(function () { return 0; });
+      g.adj.forEach(function (v, i) { grado[i] = v.length; });
+      var candidati = [];
+      nodoSemaforico = {};
+      cacheTempo = {};      // i tempi cambiano con i semafori: si ricalcolano
+      for (var i = 0; i < g.nodi.length; i++) if (grado[i] >= 3) candidati.push(i);
+      // dai più «grossi» ai più piccoli, tenendo le distanze
+      candidati.sort(function (a, b) { return grado[b] - grado[a] || a - b; });
+      semafori = [];
+      candidati.forEach(function (n) {
+        if (semafori.length >= SEM_QUANTI) return;
+        var p = g.nodi[n];
+        for (var k = 0; k < semafori.length; k++) {
+          if (Math.hypot(semafori[k].x - p[0], semafori[k].y - p[1]) < SEM_DISTANZA) return;
+        }
+        var assi = {};
+        g.adj[n].forEach(function (e) {
+          var q = g.nodi[e[0]];
+          var ang = Math.atan2(q[1] - p[1], q[0] - p[0]);
+          assi[e[0]] = ((Math.round(ang / (Math.PI / 2)) % 2) + 2) % 2;
+        });
+        semafori.push({ n: n, x: p[0], y: p[1], assi: assi });
+        nodoSemaforico[n] = true;
+      });
+    }
+
+    function faseSemaforo() {
+      var f = tempoSem % SEM_CICLO;
+      if (f < 15) return { verde: 0, giallo: false };
+      if (f < 18) return { verde: 0, giallo: true };
+      if (f < 33) return { verde: 1, giallo: false };
+      return { verde: 1, giallo: true };
+    }
+
+    // verde per chi arriva al semaforo `sem` provenendo dal nodo `da`
+    function verdePer(sem, da) {
+      var asse = sem.assi[da];
+      if (asse == null) return true;
+      var f = faseSemaforo();
+      return f.verde === asse;
+    }
+
+    function semaforoAl(nodo) {
+      for (var i = 0; i < semafori.length; i++) if (semafori[i].n === nodo) return semafori[i];
+      return null;
+    }
+
+    /* ---------- traffico ----------
+
+       Ogni auto vive su un arco del grafo e cammina verso il nodo in fondo;
+       arrivata, ne sceglie un altro che non sia quello da cui è venuta. Frena
+       per il rosso, per chi ha davanti e per te. Quelle che si allontanano
+       troppo vengono rimesse in circolo vicino al giocatore: tenere in vita
+       tutto il paese costerebbe senza che nessuno lo veda. */
+    function nuovaAuto(vicinoA) {
+      var g = grafo();
+      for (var t = 0; t < 60; t++) {
+        var arco = g.archi ? null : null;
+        var a = Math.floor(rngTraffico() * g.nodi.length);
+        if (!g.adj[a].length) continue;
+        var b = g.adj[a][Math.floor(rngTraffico() * g.adj[a].length)][0];
+        var p = g.nodi[a];
+        var d = Math.hypot(p[0] - vicinoA.x, p[1] - vicinoA.y);
+        if (d < 90 || d > 260) continue;
+        return {
+          a: a, b: b, t: rngTraffico() * 0.6, vel: TRAFFICO_VEL * 0.6,
+          colore: COLORI[Math.floor(rngTraffico() * COLORI.length)].tinta,
+          freno: false, x: p[0], y: p[1], h: 0, sterzo: 0
+        };
+      }
+      return null;
+    }
+
+    var semeTraffico = 0;
+    function rngTraffico() {
+      semeTraffico = (semeTraffico + 0x6D2B79F5) >>> 0;
+      var x = Math.imul(semeTraffico ^ (semeTraffico >>> 15), 1 | semeTraffico);
+      x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+      return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+    }
+
+    function passoTraffico(dt) {
+      var g = grafo();
+      tempoSem += dt;
+
+      // rimpiazzo di chi si è allontanato
+      for (var i = traffico.length - 1; i >= 0; i--) {
+        if (Math.hypot(traffico[i].x - auto.x, traffico[i].y - auto.y) > TRAFFICO_VICINO) traffico.splice(i, 1);
+      }
+      while (traffico.length < TRAFFICO) {
+        var nuova = nuovaAuto(auto);
+        if (!nuova) break;
+        traffico.push(nuova);
+      }
+
+      for (i = 0; i < traffico.length; i++) {
+        var v = traffico[i];
+        var pa = g.nodi[v.a], pb = g.nodi[v.b];
+        var len = Math.hypot(pb[0] - pa[0], pb[1] - pa[1]) || 1;
+        var restanti = (1 - v.t) * len;
+
+        var voluta = TRAFFICO_VEL;
+        // il rosso in fondo all'arco
+        var sem = semaforoAl(v.b);
+        if (sem && !verdePer(sem, v.a) && restanti < 45) {
+          voluta = Math.max(0, (restanti - SEM_STOP) * 0.55);
+        }
+        // chi ha davanti sullo stesso arco, e il giocatore
+        for (var j = 0; j < traffico.length; j++) {
+          var w = traffico[j];
+          if (j === i || w.a !== v.a || w.b !== v.b || w.t <= v.t) continue;
+          var gap = (w.t - v.t) * len;
+          if (gap < 16) voluta = Math.min(voluta, Math.max(0, (gap - 7) * 0.9));
+        }
+        var dxG = auto.x - v.x, dyG = auto.y - v.y;
+        var avantiG = dxG * Math.cos(v.h) + dyG * Math.sin(v.h);
+        var latG = Math.abs(-dxG * Math.sin(v.h) + dyG * Math.cos(v.h));
+        // frena per il giocatore solo se ce l'ha davvero nella propria corsia
+        if (avantiG > 0 && avantiG < 15 && latG < 2.2) voluta = Math.min(voluta, Math.max(0, (avantiG - 5) * 0.9));
+
+        /* Chi non è fermo a un rosso non si pianta mai del tutto: un'auto
+           immobile in mezzo alla via, in un paese senza sorpassi, è un muro —
+           e dietro ci resta chiunque, per sempre. */
+        if (!(sem && !verdePer(sem, v.a) && restanti < 45)) voluta = Math.max(voluta, 1.6);
+        v.freno = voluta < v.vel - 0.4;
+        v.vel += (voluta - v.vel) * Math.min(1, (v.freno ? 5 : 2.2) * dt);
+        v.vel = Math.max(0, v.vel);
+        v.t += (v.vel * dt) / len;
+
+        if (v.t >= 1) {
+          var scelte = g.adj[v.b].filter(function (e) { return e[0] !== v.a; });
+          if (!scelte.length) scelte = g.adj[v.b];
+          var prossimo = scelte.length ? scelte[Math.floor(rngTraffico() * scelte.length)][0] : v.a;
+          v.a = v.b; v.b = prossimo; v.t = 0;
+          pa = g.nodi[v.a]; pb = g.nodi[v.b];
+          len = Math.hypot(pb[0] - pa[0], pb[1] - pa[1]) || 1;
+        }
+        /* Si tiene la destra. Il grafo è la mezzeria: senza scostamento tutti
+           viaggiano sulla riga bianca, e ogni incrocio con chi arriva in senso
+           opposto è un frontale — il pilota simulato raccoglieva ventiquattro
+           botte a turno senza aver sbagliato niente. */
+        var lx = pb[0] - pa[0], ly = pb[1] - pa[1];
+        var ll = Math.hypot(lx, ly) || 1;
+        var destraX = ly / ll * CORSIA, destraY = -lx / ll * CORSIA;
+        v.x = pa[0] + lx * v.t + destraX;
+        v.y = pa[1] + ly * v.t + destraY;
+        var hNuovo = Math.atan2(pb[1] - pa[1], pb[0] - pa[0]);
+        var dh = hNuovo - v.h;
+        while (dh > Math.PI) dh -= 2 * Math.PI;
+        while (dh < -Math.PI) dh += 2 * Math.PI;
+        v.h += dh * Math.min(1, 8 * dt);
+        v.sterzo = Math.max(-1, Math.min(1, dh * 2));
+
+        // botta con il giocatore: due lamiere, non due punti
+        var d = Math.hypot(v.x - auto.x, v.y - auto.y);
+        if (d < 3.4 && d > 0.01) {
+          var nx = (auto.x - v.x) / d, ny = (auto.y - v.y) / d;
+          var spinta = (3.4 - d);
+          auto.x += nx * spinta * 0.8; auto.y += ny * spinta * 0.8;
+          v.x -= nx * spinta * 0.2; v.y -= ny * spinta * 0.2;
+          var vn = auto.vx * nx + auto.vy * ny;
+          if (vn < 0) {
+            auto.vx -= vn * nx * 1.4; auto.vy -= vn * ny * 1.4;
+            auto.vx *= 0.6; auto.vy *= 0.6;
+            v.vel *= 0.4;
+            if (!auto.aContattoAuto) {
+              urti++;
+              scossa = 0.3;
+              api.sfx.tone(300, 0.35, 'square', 0.09, 180);   // il clacson
+            }
+            // un secondo di grazia: strusciare lungo una fiancata è una botta sola
+            auto.aContattoAuto = 60;
+          }
+        }
+      }
+      if (auto.aContattoAuto) auto.aContattoAuto--;
+    }
+
+    /* Cosa c'è davanti a te entro cinquanta metri: un rosso o una coda. Lo
+       vede chi guida guardando la strada, e lo espone lo stato — è quello che
+       permette al pilota simulato di fermarsi al semaforo invece di prendere
+       la fiancata di chi ha verde. */
+    function guardaAvanti() {
+      var g = grafo();
+      var c = Math.cos(auto.h), s = Math.sin(auto.h);
+      var best = null;
+      semafori.forEach(function (sem) {
+        var dx = sem.x - auto.x, dy = sem.y - auto.y;
+        var av = dx * c + dy * s, lat = Math.abs(-dx * s + dy * c);
+        /* Il rosso conta solo finché si è *prima* della linea. Chi è già
+           dentro l'incrocio lo sgombera: segnalarglielo lo inchiodava in mezzo
+           alle strisce, con la linea alle spalle e il gas a zero — fermo lì
+           finché le pizze si gelavano. */
+        if (av < SEM_STOP - 1 || av > 55 || lat > 12) return;
+        // da dove ci si arriva: il vicino del semaforo più allineato con noi
+        var daNodoVicino = null, meglio = -Infinity;
+        Object.keys(sem.assi).forEach(function (k) {
+          var q = g.nodi[k];
+          var vx = sem.x - q[0], vy = sem.y - q[1];
+          var l = Math.hypot(vx, vy) || 1;
+          var all = (vx / l) * c + (vy / l) * s;
+          if (all > meglio) { meglio = all; daNodoVicino = k; }
+        });
+        if (!verdePer(sem, daNodoVicino) && (!best || av < best.distanza)) {
+          best = { tipo: 'semaforo', distanza: av - SEM_STOP, x: sem.x, y: sem.y };
+        }
+      });
+      traffico.forEach(function (v) {
+        var dx = v.x - auto.x, dy = v.y - auto.y;
+        var av = dx * c + dy * s, lat = Math.abs(-dx * s + dy * c);
+        if (av < 0 || av > 45 || lat > 2.6) return;
+        /* Solo chi va nella nostra stessa direzione: dietro a chi ci viene
+           incontro non ci si accoda, gli si passa a fianco. Contando anche i
+           contromano il pilota si fermava davanti a un'auto che si fermava a
+           sua volta per lui — due che si cedono il passo all'infinito, e il
+           turno finiva senza una consegna e senza una botta. */
+        if (Math.cos(v.h) * c + Math.sin(v.h) * s < 0.3) return;
+        if (!best || av - 5 < best.distanza) best = { tipo: 'auto', distanza: av - 5, x: v.x, y: v.y };
+      });
+      davanti = best;
+    }
+
+    /* La multa: si prende passando l'incrocio col rosso a velocità di marcia.
+       Non chiude il turno — la punizione vera è la fiancata di chi arriva —
+       ma toglie punti, e i punti sono la classifica. */
+    function controllaRosso() {
+      var g = grafo();
+      for (var i = 0; i < semafori.length; i++) {
+        var sem = semafori[i];
+        var d = Math.hypot(sem.x - auto.x, sem.y - auto.y);
+        if (d > 7 || Math.abs(auto.velocita) < 2) continue;
+        if (ultimoIncrocio === sem.n) return;
+        var c = Math.cos(auto.h), s = Math.sin(auto.h);
+        var daNodoVicino = null, meglio = -Infinity;
+        Object.keys(sem.assi).forEach(function (k) {
+          var q = g.nodi[k];
+          var vx = sem.x - q[0], vy = sem.y - q[1];
+          var l = Math.hypot(vx, vy) || 1;
+          var all = (vx / l) * c + (vy / l) * s;
+          if (all > meglio) { meglio = all; daNodoVicino = k; }
+        });
+        ultimoIncrocio = sem.n;
+        if (!verdePer(sem, daNodoVicino)) {
+          multe++;
+          api.addScore(-MULTA * cfg.level);
+          nota('Col rosso: −' + (MULTA * cfg.level), '#f87171');
+          api.sfx.tone(200, 0.3, 'sawtooth', 0.08, 120);
+        }
+        return;
+      }
+      // usciti dall'incrocio, si può prendere la prossima multa
+      var vicino = false;
+      for (i = 0; i < semafori.length; i++) {
+        if (Math.hypot(semafori[i].x - auto.x, semafori[i].y - auto.y) < 12) vicino = true;
+      }
+      if (!vicino) ultimoIncrocio = null;
     }
 
     /* ---------- turno e carichi ---------- */
@@ -546,7 +843,8 @@ TG.registry.register({
       var poi = vicini.length ? g0.nodi[vicini[0][0]] : [qui[0] + 1, qui[1]];
       auto = {
         x: qui[0], y: qui[1], h: Math.atan2(poi[1] - qui[1], poi[0] - qui[0]),
-        vx: 0, vy: 0, sterzo: 0, gas: 0, freno: false, velocita: 0, laterale: 0, inStrada: true
+        vx: 0, vy: 0, sterzo: 0, gas: 0, freno: false, velocita: 0, laterale: 0,
+        inStrada: true, carico: 1, slittamento: 0
       };
       cam = { x: auto.x, y: auto.y, ang: auto.h };
       stato = 'forno';
@@ -555,6 +853,14 @@ TG.registry.register({
       fatte = 0; carico = []; prossimoCarico = false;
       acc = 0; finito = false; note = []; urti = 0; scossa = 0;
       ricalcolo = 0; rottaNodi = []; obiettivo = null; freddaDa = null; ultimaConsegna = null;
+      /* Il paese vive: i semafori sono sempre gli stessi incroci, il traffico
+         riparte da zero a ogni turno con lo stesso seme, quindi anche le auto
+         che incontri sono le stesse — un turno si può imparare. */
+      preparaSemafori();
+      semeTraffico = 0x7A4F;
+      tempoSem = 0;
+      traffico = [];
+      ultimoIncrocio = null; multe = 0; davanti = null;
       colore = leggiColore();
       nuovoCarico();
       carico.forEach(function (c) { c.inMano = true; });   // il primo carico è già in mano
@@ -585,6 +891,7 @@ TG.registry.register({
           api.sfx.tone(880, 0.3, 'square', 0.11);
           nota('Vai!', '#4ade80');
         }
+        passoTraffico(dt);
         audio(gas ? 0.7 : 0.12, gas ? 0.6 : 0, 0);
         return;
       }
@@ -607,16 +914,32 @@ TG.registry.register({
       var avanti = auto.vx * c + auto.vy * s;
       var lato = -auto.vx * s + auto.vy * c;
 
-      /* Lo sterzo prende con la velocità: da fermi il muso non gira.
+      /* Modello a bicicletta, al posto di «giro il muso di tanto al secondo».
+         L'angolo delle ruote decide la rotazione attraverso il passo:
+         ω = v·tan(δ)/passo. Da quella riga sola vengono gratis tre cose che
+         prima andavano finte a mano — da fermi non si gira, in retromarcia si
+         gira dall'altra parte, e più si va forte più il raggio si allarga a
+         parità di sterzo.
+
+         Lo sterzo massimo cala con la velocità: a cinquanta all'ora nessuno
+         gira a fondo corsa, e senza questo l'auto faceva perni impossibili.
 
          Il segno è meno, e non è un dettaglio: `h` è l'angolo con la
          convenzione di sempre (x a est, y a nord, angoli in senso
          antiorario), mentre la destra dello schermo è il versore
          (sin h, −cos h), che è orario. Sommando invece di sottrarre,
          tenendo «destra» l'auto girava a sinistra. */
-      var presa = Math.min(1, Math.abs(avanti) / 3.5) * (inStrada ? 1 : 0.8);
-      auto.h -= auto.sterzo * STERZO * presa * dt * (avanti < 0 ? -1 : 1);
+      var presa = inStrada ? 1 : 0.72;
+      var sterzoMax = STERZO_MAX * (1 - 0.5 * Math.min(1, Math.abs(avanti) / VEL_MAX));
+      var delta = auto.sterzo * sterzoMax * presa;
+      auto.h -= (avanti * Math.tan(delta) / PASSO_AUTO) * dt;
       c = Math.cos(auto.h); s = Math.sin(auto.h);
+
+      /* Trasferimento di carico: in frenata il muso si abbassa e l'avantreno
+         morde, in accelerazione si alleggerisce. È il motivo per cui in un
+         tornante si entra frenando e si esce di gas — e adesso il gioco lo
+         premia invece di ignorarlo. */
+      auto.carico += ((freno ? 1.3 : (gas ? 0.82 : 1)) - auto.carico) * Math.min(1, 6 * dt);
 
       if (gas && avanti >= -0.1) avanti += ACCEL * dt;
       else if (gas) avanti = Math.min(0, avanti + FRENO * dt);
@@ -630,8 +953,14 @@ TG.registry.register({
       }
       avanti -= avanti * Math.abs(avanti) / (vmax * vmax) * ACCEL * dt;
 
-      var grip = inStrada ? GRIP_STRADA : GRIP_PRATO;
-      lato *= Math.exp(-grip * dt);
+      /* Aderenza laterale che *satura*: le gomme reggono fino a un tetto di
+         forza, oltre quello scivolano. Con lo smorzamento esponenziale di
+         prima l'auto era sulle rotaie a qualunque velocità — non derapava mai,
+         e arrivare in curva piano o forte era lo stesso. */
+      var grip = (inStrada ? GRIP_STRADA : GRIP_PRATO) * auto.carico;
+      var richiesta = Math.abs(lato) / Math.max(dt, 0.001);
+      lato -= (lato > 0 ? 1 : -1) * Math.min(richiesta, grip) * dt;
+      auto.slittamento = Math.min(1, Math.max(0, (richiesta - grip) / 55));
 
       auto.vx = c * avanti - s * lato;
       auto.vy = s * avanti + c * lato;
@@ -644,6 +973,9 @@ TG.registry.register({
       if (scossa > 0) scossa -= dt;
 
       urtaEdifici();
+      passoTraffico(dt);
+      controllaRosso();
+      guardaAvanti();
 
       // ritiro e consegne
       if (Math.hypot(auto.x - m.pizzeria.ax, auto.y - m.pizzeria.ay) < RAGGIO_PIZZERIA &&
@@ -687,8 +1019,8 @@ TG.registry.register({
           giri = 0.3 + 0.7 * (rapporto - marce[mi]) / (marce[mi + 1] - marce[mi]);
         }
       }
-      var slitta = Math.min(1, Math.abs(lato) / 4);
-      audio(giri, auto.gas, slitta * (inStrada ? 1 : 0.4) + (!inStrada && Math.abs(avanti) > 2 ? 0.35 : 0));
+      audio(giri, auto.gas, auto.slittamento * (inStrada ? 1 : 0.5) +
+        (!inStrada && Math.abs(avanti) > 2 ? 0.35 : 0));
     }
 
     function sullaStrada(x, y) {
@@ -973,34 +1305,137 @@ TG.registry.register({
       }
       for (i = 0; i < m.alberi.length; i++) {
         d = vicinoAllaCamera(m.alberi[i].x, m.alberi[i].y);
-        if (d >= 0) lista.push({ d: d, e: m.alberi[i], albero: true });
+        if (d >= 0) lista.push({ d: d, e: m.alberi[i], tipo: 'albero' });
+      }
+      for (i = 0; i < traffico.length; i++) {
+        d = vicinoAllaCamera(traffico[i].x, traffico[i].y);
+        if (d >= 0) lista.push({ d: d, e: traffico[i], tipo: 'auto' });
+      }
+      for (i = 0; i < semafori.length; i++) {
+        d = vicinoAllaCamera(semafori[i].x, semafori[i].y);
+        if (d >= 0) lista.push({ d: d, e: semafori[i], tipo: 'semaforo' });
       }
       lista.sort(function (a, b) { return b.d - a.d; });
       for (i = 0; i < lista.length; i++) {
-        if (lista[i].albero) disegnaAlbero(ctx, lista[i].e);
-        else disegnaEdificio(ctx, lista[i].e);
+        var el = lista[i];
+        if (el.tipo === 'albero') disegnaAlbero(ctx, el.e);
+        else if (el.tipo === 'auto') disegnaVeicolo(ctx, el.e);
+        else if (el.tipo === 'semaforo') disegnaSemaforo(ctx, el.e);
+        else disegnaEdificio(ctx, el.e);
       }
     }
 
-    function disegnaEdificio(ctx, e) {
-      var c = Math.cos(e.rot), s = Math.sin(e.rot);
-      var hx = e.l / 2, hy = e.w / 2;
+    /* Una scatola nel mondo: i quattro muri girati verso di noi e il tetto.
+       La usano gli edifici, i pezzi dell'auto, i pali dei semafori — tutto
+       quello che in questo gioco è tridimensionale è una scatola. */
+    function scatola(ctx, cx, cy, cz, l, w, alt, rot, tinta, tintaTetto, dettagli) {
+      var c = Math.cos(rot), s = Math.sin(rot);
+      var hx = l / 2, hy = w / 2;
       var ang = [[-hx, -hy], [hx, -hy], [hx, hy], [-hx, hy]].map(function (p) {
-        return [e.x + p[0] * c - p[1] * s, e.y + p[0] * s + p[1] * c];
+        return [cx + p[0] * c - p[1] * s, cy + p[0] * s + p[1] * c];
       });
-      var base = COLORE_EDIFICIO[e.tipo] || '#c8b7a2';
       for (var i = 0; i < 4; i++) {
         var a = ang[i], b = ang[(i + 1) % 4];
         var nx = b[1] - a[1], ny = -(b[0] - a[0]);
-        var l = Math.hypot(nx, ny) || 1;
-        nx /= l; ny /= l;
+        var ln = Math.hypot(nx, ny) || 1;
+        nx /= ln; ny /= ln;
         // solo i muri girati verso di noi: gli altri sono coperti dai primi
         if ((camState.x - a[0]) * nx + (camState.y - a[1]) * ny <= 0) continue;
-        poligono(ctx, [[a[0], a[1], 0], [b[0], b[1], 0], [b[0], b[1], e.h], [a[0], a[1], e.h]],
-          tinta(base, luce(nx, ny)));
+        poligono(ctx, [[a[0], a[1], cz], [b[0], b[1], cz], [b[0], b[1], cz + alt], [a[0], a[1], cz + alt]],
+          tinta(nx, ny));
+        if (dettagli) dettagli(ctx, a, b, nx, ny, ln, i);
       }
-      poligono(ctx, ang.map(function (p) { return [p[0], p[1], e.h]; }),
-        tinta(COLORE_TETTO[e.tipo] || '#8d4a3a', 0.95));
+      if (tintaTetto) {
+        poligono(ctx, ang.map(function (p) { return [p[0], p[1], cz + alt]; }), tintaTetto);
+      }
+      return ang;
+    }
+
+    /* Porte e finestre. Un paese di scatole lisce sembra un plastico: bastano
+       due file di finestre e una porta perché diventi una casa, e il costo è
+       qualche rettangolo in più solo sugli edifici vicini — da lontano non si
+       distinguerebbero comunque, e sarebbero solo fotogrammi buttati. */
+    function aperture(e, base) {
+      return function (ctx, a, b, nx, ny, muro) {
+        if (vicinoAllaCamera(e.x, e.y) > 90) return;
+        var piani = Math.max(1, Math.min(4, Math.round(e.h / 3.2)));
+        var quante = Math.max(1, Math.min(6, Math.floor(muro / 3.2)));
+        var passo = muro / quante;
+        var ux = (b[0] - a[0]) / muro, uy = (b[1] - a[1]) / muro;
+        // il vetro sporge di pochi centimetri, altrimenti sparisce dentro al muro
+        var ox = nx * 0.06, oy = ny * 0.06;
+        for (var p = 0; p < piani; p++) {
+          var z0 = 0.9 + p * (e.h / piani) * 0.92;
+          var z1 = z0 + Math.min(1.3, (e.h / piani) * 0.42);
+          if (z1 > e.h - 0.25) break;
+          for (var k = 0; k < quante; k++) {
+            var t0 = (k + 0.32) * passo, t1 = (k + 0.68) * passo;
+            poligono(ctx, [
+              [a[0] + ux * t0 + ox, a[1] + uy * t0 + oy, z0],
+              [a[0] + ux * t1 + ox, a[1] + uy * t1 + oy, z0],
+              [a[0] + ux * t1 + ox, a[1] + uy * t1 + oy, z1],
+              [a[0] + ux * t0 + ox, a[1] + uy * t0 + oy, z1]
+            ], p === 0 && e.tipo === 'pizzeria' ? '#ffd27f' : '#26405e');
+          }
+        }
+        // la porta sta sul muro che guarda la strada: il generatore ci dice quale
+        if (e.pax == null) return;
+        if ((e.pax - a[0]) * nx + (e.pay - a[1]) * ny <= 0) return;
+        var mx = muro / 2;
+        poligono(ctx, [
+          [a[0] + ux * (mx - 0.55) + ox, a[1] + uy * (mx - 0.55) + oy, 0],
+          [a[0] + ux * (mx + 0.55) + ox, a[1] + uy * (mx + 0.55) + oy, 0],
+          [a[0] + ux * (mx + 0.55) + ox, a[1] + uy * (mx + 0.55) + oy, 2.1],
+          [a[0] + ux * (mx - 0.55) + ox, a[1] + uy * (mx - 0.55) + oy, 2.1]
+        ], base === 'pizzeria' ? '#7c2d12' : '#5b4636');
+      };
+    }
+
+    function disegnaEdificio(ctx, e) {
+      var base = COLORE_EDIFICIO[e.tipo] || '#c8b7a2';
+      scatola(ctx, e.x, e.y, 0, e.l, e.w, e.h, e.rot,
+        function (nx, ny) { return tinta(base, luce(nx, ny)); },
+        tinta(COLORE_TETTO[e.tipo] || '#8d4a3a', 0.95),
+        aperture(e, e.tipo));
+      // gronda: un tetto che sporge dà spessore al volume, e costa un poligono
+      if (vicinoAllaCamera(e.x, e.y) < 110 && e.tipo !== 'capannone') {
+        scatola(ctx, e.x, e.y, e.h, e.l + 0.9, e.w + 0.9, 0.28, e.rot,
+          function () { return tinta(COLORE_TETTO[e.tipo] || '#8d4a3a', 0.75); },
+          tinta(COLORE_TETTO[e.tipo] || '#8d4a3a', 1));
+      }
+    }
+
+    /* Il semaforo: palo e testata con le tre luci, una per ciascun asse così
+       chi arriva da qualunque parte vede la sua. La luce accesa è piena, le
+       altre spente ma visibili — un semaforo con una lampada sola non si
+       legge, e a quaranta all'ora bisogna capirlo in mezzo secondo. */
+    function disegnaSemaforo(ctx, sem) {
+      var f = faseSemaforo();
+      var g = grafo();
+      var vicini = Object.keys(sem.assi);
+      for (var k = 0; k < vicini.length && k < 4; k++) {
+        var q = g.nodi[vicini[k]];
+        var ang = Math.atan2(q[1] - sem.y, q[0] - sem.x);
+        // il palo sta sul bordo destro di chi arriva da quella direzione
+        var px = sem.x + Math.cos(ang) * 7 + Math.cos(ang - Math.PI / 2) * 4.5;
+        var py = sem.y + Math.sin(ang) * 7 + Math.sin(ang - Math.PI / 2) * 4.5;
+        scatola(ctx, px, py, 0, 0.22, 0.22, 3.1, 0, function () { return '#3a4150'; }, '#3a4150');
+        scatola(ctx, px, py, 3.1, 0.5, 0.5, 1.5, ang, function () { return '#1a1f28'; }, '#12161d');
+        var asse = sem.assi[vicini[k]];
+        var verde = f.verde === asse && !f.giallo;
+        var giallo = f.verde === asse && f.giallo;
+        var luci = [verde ? '#111' : '#7f1d1d', giallo ? '#fbbf24' : '#4a3a12', verde ? '#4ade80' : '#12361f'];
+        for (var l = 0; l < 3; l++) {
+          var z = 4.25 - l * 0.42;
+          var ox = Math.cos(ang) * 0.27, oy = Math.sin(ang) * 0.27;
+          poligono(ctx, [
+            [px + ox - Math.cos(ang - Math.PI / 2) * 0.16, py + oy - Math.sin(ang - Math.PI / 2) * 0.16, z],
+            [px + ox + Math.cos(ang - Math.PI / 2) * 0.16, py + oy + Math.sin(ang - Math.PI / 2) * 0.16, z],
+            [px + ox + Math.cos(ang - Math.PI / 2) * 0.16, py + oy + Math.sin(ang - Math.PI / 2) * 0.16, z + 0.3],
+            [px + ox - Math.cos(ang - Math.PI / 2) * 0.16, py + oy - Math.sin(ang - Math.PI / 2) * 0.16, z + 0.3]
+          ], luci[l]);
+        }
+      }
     }
 
     function disegnaAlbero(ctx, t) {
@@ -1017,32 +1452,66 @@ TG.registry.register({
       ctx.fill();
     }
 
-    function disegnaAuto(ctx) {
-      var c = Math.cos(auto.h), s = Math.sin(auto.h);
+    /* Un'auto vera invece di un parallelepipedo: telaio, abitacolo arretrato
+       con i vetri, quattro ruote (le anteriori girano con lo sterzo), fari,
+       stop che si accendono in frenata. È lo stesso disegno per l'auto delle
+       pizze e per quelle del traffico — cambia il colore e l'insegna sul
+       tetto. */
+    function disegnaVeicolo(ctx, v) {
+      var c = Math.cos(v.h), s = Math.sin(v.h);
       function pt(av, lat, alt) {
-        return [auto.x + c * av - s * lat, auto.y + s * av + c * lat, alt];
+        return [v.x + c * av - s * lat, v.y + s * av + c * lat, alt];
       }
+      var base = v.colore;
       var hl = AUTO_L / 2, hw = AUTO_W / 2;
-      // ombra
-      poligono(ctx, [pt(-hl, -hw, 0.01), pt(hl, -hw, 0.01), pt(hl, hw, 0.01), pt(-hl, hw, 0.01)], 'rgba(0,0,0,0.35)');
-      var base = COLORI[colore].tinta;
-      var lati = [
-        [[pt(-hl, -hw, 0.25), pt(hl, -hw, 0.25), pt(hl, -hw, 1.05), pt(-hl, -hw, 1.05)], -s, c],
-        [[pt(hl, hw, 0.25), pt(-hl, hw, 0.25), pt(-hl, hw, 1.05), pt(hl, hw, 1.05)], s, -c],
-        [[pt(hl, -hw, 0.25), pt(hl, hw, 0.25), pt(hl, hw, 1.05), pt(hl, -hw, 1.05)], c, s],
-        [[pt(-hl, hw, 0.25), pt(-hl, -hw, 0.25), pt(-hl, -hw, 1.05), pt(-hl, hw, 1.05)], -c, -s]
-      ];
-      lati.forEach(function (L) { poligono(ctx, L[0], tinta(base, luce(L[1], L[2]))); });
-      poligono(ctx, [pt(-hl, -hw, 1.05), pt(hl, -hw, 1.05), pt(hl, hw, 1.05), pt(-hl, hw, 1.05)], tinta(base, 1));
-      // il cartello della pizzeria sul tetto: si vede che auto sei
-      poligono(ctx, [pt(-0.5, -0.35, 1.05), pt(0.5, -0.35, 1.05), pt(0.5, -0.35, 1.55), pt(-0.5, -0.35, 1.55)], '#f8fafc');
-      poligono(ctx, [pt(0.5, 0.35, 1.05), pt(-0.5, 0.35, 1.05), pt(-0.5, 0.35, 1.55), pt(0.5, 0.35, 1.55)], '#e2e8f0');
-      poligono(ctx, [pt(-0.5, -0.35, 1.55), pt(0.5, -0.35, 1.55), pt(0.5, 0.35, 1.55), pt(-0.5, 0.35, 1.55)], '#fbbf24');
-      // stop
-      if (auto.freno) {
-        poligono(ctx, [pt(-hl - 0.02, -hw + 0.2, 0.5), pt(-hl - 0.02, -hw + 0.5, 0.5), pt(-hl - 0.02, -hw + 0.5, 0.75), pt(-hl - 0.02, -hw + 0.2, 0.75)], '#ff4444');
-        poligono(ctx, [pt(-hl - 0.02, hw - 0.5, 0.5), pt(-hl - 0.02, hw - 0.2, 0.5), pt(-hl - 0.02, hw - 0.2, 0.75), pt(-hl - 0.02, hw - 0.5, 0.75)], '#ff4444');
+
+      // ombra a terra
+      poligono(ctx, [pt(-hl, -hw, 0.01), pt(hl, -hw, 0.01), pt(hl, hw, 0.01), pt(-hl, hw, 0.01)], 'rgba(0,0,0,0.32)');
+
+      // ruote: le anteriori sterzano, e si vede
+      var sterzo = (v.sterzo || 0) * 0.5;
+      [[1.25, 1], [1.25, -1], [-1.3, 1], [-1.3, -1]].forEach(function (r) {
+        var davanti = r[0] > 0;
+        var wx = v.x + c * r[0] - s * (r[1] * (hw - 0.12));
+        var wy = v.y + s * r[0] + c * (r[1] * (hw - 0.12));
+        scatola(ctx, wx, wy, 0, 0.66, 0.24, 0.62, v.h + (davanti ? sterzo : 0),
+          function () { return '#15181f'; }, '#23262e');
+      });
+
+      // telaio e abitacolo
+      scatola(ctx, v.x, v.y, 0.34, AUTO_L, AUTO_W, 0.62, v.h,
+        function (nx, ny) { return tinta(base, luce(nx, ny)); }, tinta(base, 1));
+      var ax = v.x - c * 0.25, ay = v.y - s * 0.25;
+      scatola(ctx, ax, ay, 0.96, AUTO_L * 0.5, AUTO_W - 0.22, 0.5, v.h,
+        function (nx, ny) { return tinta(base, luce(nx, ny) * 0.92); }, tinta(base, 0.85));
+
+      // vetri: parabrezza, lunotto e i due laterali
+      var vetro = 'rgba(150,200,235,0.85)';
+      poligono(ctx, [pt(0.78, -0.72, 1.02), pt(0.78, 0.72, 1.02), pt(0.5, 0.66, 1.42), pt(0.5, -0.66, 1.42)], vetro);
+      poligono(ctx, [pt(-1.3, 0.72, 1.02), pt(-1.3, -0.72, 1.02), pt(-1.05, -0.66, 1.42), pt(-1.05, 0.66, 1.42)], 'rgba(120,170,205,0.8)');
+      for (var lato = -1; lato <= 1; lato += 2) {
+        poligono(ctx, [pt(0.7, lato * 0.78, 1.06), pt(-1.2, lato * 0.78, 1.06),
+                       pt(-1.05, lato * 0.72, 1.4), pt(0.55, lato * 0.72, 1.4)],
+          lato > 0 ? 'rgba(130,180,215,0.7)' : 'rgba(110,160,195,0.7)');
       }
+
+      // fari e stop
+      poligono(ctx, [pt(hl + 0.01, -0.72, 0.5), pt(hl + 0.01, -0.36, 0.5), pt(hl + 0.01, -0.36, 0.76), pt(hl + 0.01, -0.72, 0.76)], '#fff7d6');
+      poligono(ctx, [pt(hl + 0.01, 0.36, 0.5), pt(hl + 0.01, 0.72, 0.5), pt(hl + 0.01, 0.72, 0.76), pt(hl + 0.01, 0.36, 0.76)], '#fff7d6');
+      var stop = v.freno ? '#ff3b30' : '#8e1b16';
+      poligono(ctx, [pt(-hl - 0.01, -0.72, 0.5), pt(-hl - 0.01, -0.36, 0.5), pt(-hl - 0.01, -0.36, 0.76), pt(-hl - 0.01, -0.72, 0.76)], stop);
+      poligono(ctx, [pt(-hl - 0.01, 0.36, 0.5), pt(-hl - 0.01, 0.72, 0.5), pt(-hl - 0.01, 0.72, 0.76), pt(-hl - 0.01, 0.36, 0.76)], stop);
+
+      // l'insegna sul tetto: la porta solo chi consegna
+      if (v.insegna) {
+        scatola(ctx, ax, ay, 1.46, 1.15, 0.42, 0.42, v.h,
+          function () { return '#f8fafc'; }, '#fbbf24');
+      }
+    }
+
+    function disegnaAuto(ctx) {
+      disegnaVeicolo(ctx, { x: auto.x, y: auto.y, h: auto.h, colore: COLORI[colore].tinta,
+        freno: auto.freno, sterzo: auto.sterzo, insegna: true });
     }
 
     /* Il faro sulla consegna: una colonna di luce che passa sopra ai tetti.
@@ -1256,6 +1725,16 @@ TG.registry.register({
           return { via: c.via, civico: c.civico, x: c.ax, y: c.ay, calore: Math.round(c.calore * 1000) / 1000, budget: Math.round(c.budget * 10) / 10, inMano: !!c.inMano };
         }),
         obiettivo: obiettivo ? { x: obiettivo.x, y: obiettivo.y, tipo: obiettivo.tipo } : null,
+        // quello che vede chi guida: un rosso o una coda entro cinquanta metri
+        davanti: davanti ? { tipo: davanti.tipo, distanza: Math.round(davanti.distanza * 10) / 10 } : null,
+        multe: multe,
+        semafori: semafori.map(function (x) {
+          var f = faseSemaforo();
+          return { x: x.x, y: x.y, verde: f.verde, giallo: f.giallo };
+        }),
+        traffico: traffico.map(function (v) {
+          return { x: Math.round(v.x * 10) / 10, y: Math.round(v.y * 10) / 10, h: v.h, vel: Math.round(v.vel * 10) / 10 };
+        }),
         rotta: (rottaNodi || []).map(function (n) { return grafo().nodi[n]; }),
         freddaDa: freddaDa ? freddaDa.via + ' ' + freddaDa.civico : null,
         ultimaConsegna: ultimaConsegna
