@@ -1049,6 +1049,31 @@ console.log('\n[pizze: consegne a Codiverno]');
     check('turni diversi, indirizzi diversi', eti(a) !== eti(c));
   }
 
+  /* Il verso dello sterzo. Sembra troppo ovvio da verificare, ed è
+     esattamente per questo che è passato inosservato fino a che qualcuno non
+     ha giocato: tenendo «destra» l'auto girava a sinistra. `h` è in
+     convenzione antioraria (x a est, y a nord), mentre la destra dello
+     schermo è il versore (sin h, −cos h), che gira in senso orario: sommare
+     invece di sottrarre invertiva tutto. Qui si misura la sola cosa che
+     conta, cioè da che parte va il muso rispetto alla destra di chi guida. */
+  {
+    const versoDestra = (tasto) => {
+      const g = makeGame(def, util, 1);
+      dopoIlVia(g);
+      g.input.held.up = true;
+      runUntil(g.game, () => false, 1.2);         // prima si prende velocità
+      const h0 = g.game.state().auto.h;
+      g.input.held[tasto] = true;
+      runUntil(g.game, () => false, 1);
+      const h1 = g.game.state().auto.h;
+      // componente della nuova direzione lungo la destra di prima
+      return Math.cos(h1) * Math.sin(h0) - Math.sin(h1) * Math.cos(h0);
+    };
+    const d = versoDestra('right'), sx = versoDestra('left');
+    check('tenendo ▶ l\'auto gira a destra', d > 0.2, d.toFixed(2));
+    check('e tenendo ◀ gira a sinistra', sx < -0.2, sx.toFixed(2));
+  }
+
   /* Il calore è il tempo del gioco: scende sempre, anche da fermi. Senza
      questa regola restare immobili sarebbe gratis. */
   {
@@ -1066,38 +1091,29 @@ console.log('\n[pizze: consegne a Codiverno]');
       f.game.state().freddaDa || '');
   }
 
-  /* Non si consegna passando: bisogna accostare. Si tiene il gas schiacciato
-     puntando il civico e si guarda cosa succede — passare sotto casa a
-     cinquanta non deve valere una consegna. Fermarsi contro un muro sì: è pur
-     sempre fermarsi, e il test guarda la velocità nell'istante in cui la
-     consegna avviene, non le intenzioni di chi guidava. */
+  /* Non si consegna passando: bisogna accostare. Si guida sul percorso vero
+     — puntare il civico in linea d'aria, in un paese, vuol dire entrare nel
+     giardino del vicino e non arrivarci mai — ma senza mai alzare il piede.
+     Fermarsi contro un muro vale come fermarsi: il test guarda la velocità
+     nell'istante della consegna, non le intenzioni di chi guidava. */
   {
     const g = makeGame(def, util, 1);
     dopoIlVia(g);
-    let passatoVeloce = false, consegneVeloci = 0, consegne = 0;
-    let fattePrec = 0, velocitaPrec = 0;
+    const pilota = guida(g, { reazione: 0.1, errore: 8, ardimento: 1 });
+    let passatoVeloce = false, consegneVeloci = 0, consegne = 0, fattePrec = 0;
     runUntil(g.game, () => false, 60, () => {
       const s = g.game.state();
-      /* L'aumento di `fatte` si vede al giro dopo, quindi la velocità della
-         consegna è quella del fotogramma precedente: confrontare lo stato con
-         se stesso dentro la stessa chiamata non mostrerebbe mai niente. */
       if (s.fatte > fattePrec) {
         fattePrec = s.fatte;
         consegne++;
         if (s.ultimaConsegna && s.ultimaConsegna.velocita > 4.6) consegneVeloci++;
       }
-      if (!s.obiettivo) { velocitaPrec = Math.abs(s.auto.velocita); return; }
-      const a = s.auto;
-      let ang = Math.atan2(s.obiettivo.y - a.y, s.obiettivo.x - a.x) - a.h;
-      while (ang > Math.PI) ang -= 2 * Math.PI;
-      while (ang < -Math.PI) ang += 2 * Math.PI;
-      g.input.held.left = ang < -0.06;
-      g.input.held.right = ang > 0.06;
-      g.input.held.up = true;
+      pilota();
+      g.input.held.up = true;          // gas sempre schiacciato
       g.input.held.down = false;
-      const d = Math.hypot(s.obiettivo.x - a.x, s.obiettivo.y - a.y);
-      if (d < 12 && Math.abs(a.velocita) > 6) passatoVeloce = true;
-      velocitaPrec = Math.abs(a.velocita);
+      if (!s.obiettivo) return;
+      const d = Math.hypot(s.obiettivo.x - s.auto.x, s.obiettivo.y - s.auto.y);
+      if (d < 12 && Math.abs(s.auto.velocita) > 6) passatoVeloce = true;
     });
     check('si passa sotto casa a tutta velocità senza consegnare',
       passatoVeloce && consegneVeloci === 0,

@@ -17,7 +17,7 @@ da `file://`) e giochi.
 | 🔴 **Forza 4** | Quattro di fila, vs CPU o in due | La CPU guarda sempre più mosse avanti (minimax) e smette di svarionare |
 | 🔢 **Tessere** | Rompicapo scorrevole (il «quindici») | Griglia da 3×3 (livelli 1-2) a 4×4 e 5×5, mescolamento più profondo; il tempo cresce con la griglia — un paio di minuti per il 3×3, quattro per il 4×4, oltre sei per il 5×5 |
 | 🧭 **Labirinto** | Prima persona, con una mappa che si dimentica | Labirinto più grande, memoria della mappa più corta (24s al 1° livello, 10s al 10°), meno alberi, vista più corta |
-| 🍕 **Pizze** | Consegne a domicilio in 3D, per le strade di Codiverno | Turni più lunghi e più lontani dalla piazza, più pizze per giro (una fino al 2°, due fino al 4°, poi tre) e un margine di calore che si stringe: dal +200% del giro ideale al primo turno al +120% del decimo |
+| 🍕 **Pizze** | Consegne a domicilio in 3D, per le strade vere di Codiverno | Turni più lunghi e più lontani dalla pizzeria, più pizze per giro (una fino al 2°, due fino al 4°, poi tre) e un margine di calore che si stringe: dal +54% sul tempo di un buon guidatore al primo turno al +5% del decimo |
 | 👾 **Orda** | Sparatutto dall'alto in un dungeon di camere e corridoi: i mostri dormono finché non ti vedono | Ondate più numerose, mostri più veloci e con la vista più lunga (quindi se ne sveglia di più tutti insieme), tipi nuovi che si aggiungono ai vecchi — scattanti dal 2°, corazzati dal 3°, tiratori dal 4°, gemelli che si sdoppiano dal 7° — e un boss ogni cinque livelli |
 
 Il **Labirinto** si gioca in prima persona con il joystick. La pianta non è mai
@@ -88,14 +88,23 @@ grande), e le comparse sono annunciate da un cerchio rosso, sempre lontano da te
 e fuori dalla tua vista.
 
 In **Pizze** si consegna a domicilio a **Codiverno**, una frazione di Vigonza,
-guidando in 3D con la telecamera sopra l'auto. Si esce dalla pizzeria con le
+guidando in 3D con la telecamera sopra l'auto: ◀ ▶ sterzano, GAS e FRENO
+stanno sotto il pollice destro. Si esce dalla pizzeria con le
 pizze appena sfornate e si consegna finché sono calde: il tempo del gioco non è
 un cronometro, è il **calore**, che scende da solo e non aspetta. Una pizza che
 arriva fredda chiude il turno.
 
 Il calore concesso non è deciso a occhio. È il tempo del **giro ideale** — il
-percorso più breve *sulle strade*, calcolato con Dijkstra sul grafo del paese —
-moltiplicato per un margine che si stringe salendo di livello. E il giro ideale
+percorso più breve *sulle strade*, calcolato con Dijkstra sul grafo del paese, e
+percorso a una velocità che ogni curva limita, con le due passate per
+accelerazione e frenata — moltiplicato per un margine che si stringe salendo di
+livello. La stima piatta «distanza diviso velocità media» funzionava sul paese
+inventato, tutto rettilinei, e si è rotta appena è arrivata la mappa vera: fra
+le curve di Via Monte Grappa si tengono sette metri al secondo, non dodici, e
+ogni pizza arrivava fredda. Al tempo teorico si aggiunge poi un terzo abbondante
+(`ATTRITO_REALE`), perché il giro ideale è un'auto che non esita a un incrocio e
+non fa manovra: il margine dichiarato in schermata deve valere sul tempo di chi
+guida davvero, non su quello di un'auto perfetta. E il giro ideale
 è quello «alla fermata più vicina», cioè l'ordine che suggerisce il navigatore
 del gioco: seguendo le frecce ce la fai per costruzione. Calcolarlo sul giro
 *ottimo* sembrava più elegante e faceva arrivare fuori tempo chi seguiva le
@@ -116,17 +125,33 @@ come scatole estruse, ordinamento del pittore, taglio dei poligoni sul piano
 vicino. Niente WebGL, come il raycasting del Labirinto — così gira dove gira il
 resto della suite.
 
-**Sulla mappa, una precisazione onesta.** Il paese sta in un file di dati
-generato (`assets/js/mappe/codiverno.js`) che dichiara sempre la propria fonte,
-e il gioco la scrive in schermata. Al momento è una **ricostruzione**: una
-frazione veneta plausibile — la strada principale con la chiesa e la piazza, le
-laterali, la zona artigianale, i campi — **non il rilievo vero di Codiverno**,
-perché la rete di questo ambiente non raggiunge OpenStreetMap. Per avere il
-paese vero basta un export: si scarica il riquadro attorno a Codiverno da
-openstreetmap.org («Esporta»), si salva come `dati/codiverno.osm` e si lancia
-`node tools/mappa.js`. Strade, nomi e civici diventano quelli veri, il file si
-marca come `OpenStreetMap` (ODbL, con l'attribuzione dovuta) e il gioco non se
-ne accorge nemmeno: cambiano solo i dati.
+**La mappa è Codiverno vero.** Viene da un export di OpenStreetMap — © i
+contributori di OpenStreetMap, ODbL — ritagliato attorno al nodo del paese e
+ridotto a quello che serve per guidare: Via Monte Grappa, Viale Vittorio Veneto,
+Via Isonzo, Via Bosco, Via Campolino e le altre, con le case dove sono davvero.
+Il file di dati (`assets/js/mappe/codiverno.js`) lo scrive `tools/mappa.js` e si
+rigenera con `node tools/mappa.js`; l'export sta in `dati/codiverno.osm` e non è
+in repository, perché è dato altrui e pesa trentacinque volte la mappa che ne
+esce. Se il file non c'è, lo strumento genera una **ricostruzione** dichiarata
+come tale: serve a non lasciare il gioco senza mondo, non a fingere.
+
+Tre cose che il ritaglio ha imposto, e che il generatore fa da sé:
+
+- **i numeri civici sono inventati.** Nell'export di Codiverno ce ne sono due in
+  tutto, e un gioco di consegne senza indirizzi non è un gioco: gli edifici
+  vengono numerati lungo la via a cui affacciano, dispari da una parte e pari
+  dall'altra come si fa davvero. Sono numeri finti su strade vere, e il file lo
+  dichiara nel campo `civici` — che il gioco mostra sotto il conto alla
+  rovescia insieme alla fonte;
+- **si tiene solo la rete collegata.** Tagliare a ottocentocinquanta metri
+  lascia tronconi di strada che entrano nel riquadro senza collegarsi a niente:
+  invisibili sulla mappa, letali per il navigatore, che ci manda e poi non sa
+  tornare. Si tiene la componente connessa più grande;
+- **l'asfalto è più largo del vero.** OSM dà la carreggiata reale, che in un
+  paese veneto scende a tre metri e mezzo: giusto sulla carta, impraticabile in
+  gioco — con l'auto larga meno di due metri restava un metro per lato, e si
+  passava metà del tempo nell'erba. Il generatore alza le strade a un minimo
+  giocabile, e il gioco concede un metro e mezzo di banchina.
 
 Gli avversari simulati seguono una regola comune (`TG.util.opponentSpeedRatio`):
 al primo livello si muovono poco sotto la tua velocità, intorno al terzo la
@@ -308,17 +333,18 @@ Stato attuale (percentuale di livelli vinti dal profilo indicato):
 | Orda · medio | 100% | 100% | 93% | 98% | 78% |
 | Orda · bravo | 100% | 100% | 85% | 95% | 85% |
 | Pizze · fermo | 0% | 0% | 0% | 0% | 0% |
-| Pizze · medio | 100% | 100% | 75% | 100% | 90% |
-| Pizze · bravo | 100% | 100% | 100% | 100% | 100% |
+| Pizze · medio | 100% | 100% | 100% | 93% | 93% |
+| Pizze · bravo | 100% | 100% | 100% | 93% | 100% |
 
 Le righe di Pizze vanno lette con due avvertenze. La prima: la percentuale di
-turni vinti, sopra a un margine di calore così stretto, è quasi testa o croce —
-il numero che descrive davvero la difficoltà è **quanto calore resta sulla
-consegna più tirata**, e quello scende liscio (profilo medio: 48% al 1° turno,
-37% al 3°, 30% al 5°, 16% al 7°, 1% al 9°). La seconda: la colonna «bravo» è
-piatta al 100% e resterà tale, perché il tetto di questo gioco è la velocità di
-chi guida, e il bot guida al limite fisico dell'auto con la rotta perfetta già
-in mano. Non è un livello facile: è un pilota che non sbaglia strada.
+turni vinti dice poco, perché «arrivato con il 6% di calore» e «arrivato con il
+40%» contano tutti e due come una vittoria. Il numero che descrive davvero la
+difficoltà è **quanto calore resta sulla consegna più tirata**, e quello scende
+liscio — profilo medio: 39% al 1° turno, 30% al 5°, 6% al 10°; profilo bravo:
+53%, 49%, 33%. La seconda: la colonna «bravo» è piatta al 100% e resterà tale,
+perché il tetto di questo gioco è la velocità di chi guida, e il bot guida al
+limite dell'auto con la rotta perfetta già in mano. Non è un livello facile: è
+un pilota che non sbaglia strada.
 
 La riga «bravo» di Mattoni è salita al 7° livello — dal 20% al 60% — da quando
 il fantasma non compare più sotto il 12°. È l'effetto che il bot subiva più di

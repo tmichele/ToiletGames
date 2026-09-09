@@ -528,10 +528,10 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   await page.click('.btn:has-text("Gioca")');
   await sleep(400);
   const pedali = await page.$$eval('#touch-controls .guida__btn', (b) => b.map((x) => x.textContent));
-  check('le pizze hanno volante e pedali',
-    (await page.$$('#touch-controls .volante')).length === 1 &&
-    pedali.length === 2 && pedali.indexOf('GAS') >= 0 && pedali.indexOf('FRENO') >= 0,
-    'volante + ' + pedali.join(' '));
+  check('le pizze hanno sterzo e pedali',
+    pedali.length === 4 && pedali.indexOf('GAS') >= 0 && pedali.indexOf('FRENO') >= 0 &&
+    pedali.indexOf('◀') >= 0 && pedali.indexOf('▶') >= 0,
+    pedali.join(' '));
   const z0 = await page.evaluate(() => TG.engine.inspect().game);
   check('si parte davanti al forno, con le pizze in mano',
     z0.stato === 'forno' && z0.carico.length >= 1 && z0.carico[0].calore === 1,
@@ -567,6 +567,24 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     Math.round(z2.carico[0].calore * 100) + '% -> ' + Math.round(z3.carico[0].calore * 100) + '%');
   check('il navigatore ha una rotta verso il civico', z3.rotta.length > 1 && !!z3.obiettivo,
     z3.rotta.length + ' nodi');
+
+  /* Il verso dello sterzo, premuto col mouse sul tasto vero: tenendo ▶ il muso
+     deve andare verso la destra di chi guida. È il bug che è passato fino a
+     quando qualcuno non ha giocato — a schermo l'auto punta sempre in alto,
+     quindi «gira dalla parte sbagliata» non si vede leggendo il codice. */
+  const destraBtn = await page.$('#touch-controls .guida__btn[data-dir="right"]');
+  const db = await destraBtn.boundingBox();
+  await page.keyboard.down('ArrowUp');
+  await sleep(1200);
+  const hp = (await page.evaluate(() => TG.engine.inspect().game)).auto.h;
+  await page.mouse.move(db.x + db.width / 2, db.y + db.height / 2);
+  await page.mouse.down();
+  await sleep(900);
+  const hd = (await page.evaluate(() => TG.engine.inspect().game)).auto.h;
+  await page.mouse.up();
+  await page.keyboard.up('ArrowUp');
+  const verso = Math.cos(hd) * Math.sin(hp) - Math.sin(hd) * Math.cos(hp);
+  check('il tasto ▶ sterza a destra', verso > 0.15, 'componente ' + verso.toFixed(2));
 
   // il pedale a schermo fa lo stesso lavoro del tasto
   const gasBtn = await page.$('#touch-controls .guida__btn--gas');

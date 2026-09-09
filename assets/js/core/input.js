@@ -19,10 +19,6 @@ TG.input = (function () {
   var pointer = { x: 0, y: 0, down: false, inside: false, moved: false };
   /* Leva analogica: -1..1 su entrambi gli assi, 0 quando nessuno la tocca. */
   var stick = { x: 0, y: 0, attiva: false };
-  /* Volante: -1 tutto a sinistra, 1 tutto a destra, 0 dritto. `attivo` dice
-     se qualcuno lo sta tenendo: lasciato, torna al centro da solo. */
-  var volante = { valore: 0, attivo: false };
-  var VOLANTE_MAX = 100 * Math.PI / 180;   // rotazione a fondo corsa, per lato
 
   var stageEl = null, canvasEl = null, controlsEl = null;
   var viewport = { w: 360, h: 480 };
@@ -152,14 +148,27 @@ TG.input = (function () {
        funzionano le frecce e WASD senza che il gioco sappia da dove arrivano.
        A schermo però la croce non va: guidare vuol dire tenere premuto lo
        sterzo e il gas *insieme*, con due pollici, e una croce sta sotto uno
-       solo. */
+       solo.
+
+       Qui c'è stato un volante vero, da girare col pomello. Era più bello da
+       guardare e peggio da usare: per tenere una curva bisognava tenere il
+       dito fermo su un arco, e il pollice sinistro non ha modo di sapere dove
+       si trova senza guardarlo — mentre due tasti si trovano al buio. */
     if (kind === 'guida') {
       controlsEl.classList.add('touch-controls--guida');
       var guida = document.createElement('div');
       guida.className = 'guida';
       var sterzo = document.createElement('div');
       sterzo.className = 'guida__sterzo';
-      sterzo.appendChild(costruisciVolante());
+      [['left', '◀'], ['right', '▶']].forEach(function (d) {
+        var b = document.createElement('button');
+        b.className = 'guida__btn';
+        b.dataset.dir = d[0];
+        b.textContent = d[1];
+        b.setAttribute('aria-label', d[0] === 'left' ? 'sterza a sinistra' : 'sterza a destra');
+        bindHold(b, d[0]);
+        sterzo.appendChild(b);
+      });
       var pedali = document.createElement('div');
       pedali.className = 'guida__pedali';
       [['up', 'GAS', 'acceleratore'], ['down', 'FRENO', 'freno']].forEach(function (d) {
@@ -277,88 +286,6 @@ TG.input = (function () {
 
   var resetLeva = null;
 
-  /* Il volante: un cerchio con le razze e un pomello sulla corona. Si prende il
-     pomello (o un punto qualsiasi della corona) e lo si porta in giro: il
-     volante ruota di quanto ruota il dito attorno al centro, non di quanto si
-     sposta — così un giro del pollice è un giro del volante, come su un
-     volante vero. A fondo corsa si ferma; lasciato, torna dritto da solo.
-     Il gioco legge `volante.valore`, fra -1 e 1: è sterzata analogica, e mezzo
-     volante è mezza sterzata. */
-  function costruisciVolante() {
-    var base = document.createElement('div');
-    base.className = 'volante';
-    base.setAttribute('role', 'slider');
-    base.setAttribute('aria-label', 'volante');
-    base.setAttribute('aria-valuemin', '-1');
-    base.setAttribute('aria-valuemax', '1');
-    base.setAttribute('aria-valuenow', '0');
-    var corona = document.createElement('div');
-    corona.className = 'volante__corona';
-    ['a', 'b', 'c'].forEach(function (k) {
-      var r = document.createElement('div');
-      r.className = 'volante__razza volante__razza--' + k;
-      corona.appendChild(r);
-    });
-    var mozzo = document.createElement('div');
-    mozzo.className = 'volante__mozzo';
-    corona.appendChild(mozzo);
-    var pomello = document.createElement('div');
-    pomello.className = 'volante__pomello';
-    corona.appendChild(pomello);
-    base.appendChild(corona);
-
-    var attivo = null, angolo = 0, angoloDito = 0, angoloPresa = 0;
-
-    function angoloDi(e) {
-      var r = base.getBoundingClientRect();
-      return Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2));
-    }
-    function applica() {
-      angolo = Math.max(-VOLANTE_MAX, Math.min(VOLANTE_MAX, angolo));
-      volante.valore = angolo / VOLANTE_MAX;
-      corona.style.transform = 'rotate(' + angolo + 'rad)';
-      base.setAttribute('aria-valuenow', volante.valore.toFixed(2));
-    }
-    function rilascia() {
-      attivo = null;
-      angolo = 0;
-      volante.attivo = false;
-      corona.classList.add('is-rientro');
-      applica();
-    }
-
-    base.addEventListener('pointerdown', function (e) {
-      e.preventDefault();
-      attivo = e.pointerId;
-      base.setPointerCapture && base.setPointerCapture(e.pointerId);
-      corona.classList.remove('is-rientro');
-      angoloDito = angoloDi(e);
-      angoloPresa = angolo;
-      volante.attivo = true;
-    });
-    base.addEventListener('pointermove', function (e) {
-      if (attivo !== e.pointerId) return;
-      e.preventDefault();
-      var d = angoloDi(e) - angoloDito;
-      // il dito può passare da -π a π: si prende il giro più corto
-      while (d > Math.PI) d -= 2 * Math.PI;
-      while (d < -Math.PI) d += 2 * Math.PI;
-      angolo = angoloPresa + d;
-      applica();
-    });
-    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) {
-      base.addEventListener(ev, function (e) {
-        if (attivo !== e.pointerId) return;
-        e.preventDefault();
-        rilascia();
-      });
-    });
-
-    resetVolante = rilascia;
-    return base;
-  }
-
-  var resetVolante = null;
 
   function init(opts) {
     stageEl = opts.stage;
@@ -378,7 +305,6 @@ TG.input = (function () {
 
   function reset() {
     if (resetLeva) resetLeva();
-    if (resetVolante) resetVolante();
     down = {};
     queue.length = 0;
     tapQueue.length = 0;
@@ -399,8 +325,6 @@ TG.input = (function () {
     peekAll: function () { var q = queue.slice(); queue.length = 0; return q; },
     /* Leva analogica: {x, y} fra -1 e 1, zero se nessuno la sta usando. */
     stick: stick,
-    /* Volante: {valore, attivo}, valore fra -1 e 1. */
-    volante: volante,
     /* Tap sul campo, con coordinate nel sistema del gioco: {x, y} oppure null. */
     takeTap: function () { return tapQueue.length ? tapQueue.shift() : null; },
     /* Tasti 1-9: alternativa da tastiera ai tap. */

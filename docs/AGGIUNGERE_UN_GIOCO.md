@@ -155,8 +155,6 @@ sbagliando:
 - `api.input.pointer` — `{x, y, down}` per trascinamenti (racchette e simili).
 - `api.input.stick` — `{x, y, attiva}` fra -1 e 1: la leva analogica, per i
   giochi in cui si naviga invece di scattare.
-- `api.input.volante` — `{valore, attivo}`: il volante dei comandi `guida`,
-  fra -1 (tutto a sinistra) e 1; lasciato torna a zero da solo.
 
 Le code sono indipendenti e un gesto finisce in **una sola**: un tocco sul campo
 produce solo un tap, uno swipe solo una direzione, il pulsante azione solo
@@ -169,11 +167,12 @@ nello stesso `update`, conviene comunque fermarsi appena lo stato cambia.
 I valori di `controls` decidono i comandi a schermo: `dpad` (croce direzionale),
 `lr` (sinistra/destra piccoli), `lr-big` (due tasti che si dividono tutta la
 larghezza, per i giochi dove serve un bersaglio grande per il pollice),
-`joystick` (leva analogica), `guida` (un volante a sinistra e i pedali GAS/FRENO
-a destra: i pedali sono `up`/`down` tenuti premuti, il volante è
-`api.input.volante` — `{valore, attivo}`, valore fra -1 e 1, sterzata analogica;
-da tastiera `left`/`right` restano tutto o niente), `pointer` e `none` (nessun
-pulsante). Con `actionLabel` valorizzato si aggiunge
+`joystick` (leva analogica), `guida` (sterzo ◀ ▶ a sinistra e pedali GAS/FRENO
+a destra, disposti per due pollici: sono le stesse quattro azioni della croce —
+`left`/`right`, `up`/`down` — perché guidare vuol dire tenere premuti sterzo e
+gas insieme, e una croce sta sotto un pollice solo. Qui c'è stato un volante da
+girare col pomello: più bello da guardare, peggiore da usare — un tasto lo
+trovi al buio, un arco no), `pointer` e `none` (nessun pulsante). Con `actionLabel` valorizzato si aggiunge
 il pulsante azione.
 
 ## Tarare la difficoltà
@@ -236,6 +235,15 @@ valgono per qualunque dato generato:
 
 `test/sandbox.js` carica `assets/js/mappe/` prima dei giochi, quindi in test la
 mappa è già pronta quando `create()` viene chiamata.
+
+Se il mondo è un posto vero, mettere in conto che il dato reale non è fatto per
+il gioco: le strade di Codiverno larghe tre metri e mezzo rendevano l'asfalto
+impraticabile, i vertici ogni duecento metri agganciavano i civici all'incrocio
+sbagliato, e il ritaglio lasciava tronconi di strada scollegati in cui il
+navigatore mandava senza saper tornare. Sono tutte correzioni del generatore, e
+ognuna sta scritta accanto al codice che la fa: il prossimo che rigenera la
+mappa deve poter capire perché il dato in uscita non è la copia del dato in
+ingresso.
 
 ## Verificare le meccaniche
 

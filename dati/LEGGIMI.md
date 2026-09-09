@@ -17,6 +17,11 @@ e numeri civici sono quelli veri. Il file generato si marca da solo come
 `fonte: OpenStreetMap` e porta l'attribuzione ODbL, che il gioco mostra in
 schermata sotto il conto alla rovescia.
 
+Il ritaglio è di 850 metri attorno al nodo `place=village` di Codiverno, si
+tiene solo la rete stradale collegata e si numerano i civici lungo le vie
+(nell'export ce ne sono due in tutto). Tutto questo lo fa `tools/mappa.js`, ed è
+commentato lì.
+
 ## Se il file non c'è
 
 Non succede niente di male: `tools/mappa.js` genera una **ricostruzione** — una

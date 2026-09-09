@@ -31,9 +31,23 @@ const USCITA = path.join(ROOT, 'assets/js/mappe/codiverno.js');
 const OSM = path.join(ROOT, 'dati/codiverno.osm');
 const GEOJSON = path.join(ROOT, 'dati/codiverno.geojson');
 
-/* Codiverno sta qui: serve a convertire i gradi dell'export in metri, e a
-   dire dove si trova la mappa anche quando è ricostruita. */
-const ORIGINE = { lat: 45.4368, lon: 11.9990 };
+/* Dove sta Codiverno: serve a convertire i gradi dell'export in metri e a
+   dire dove si trova la mappa anche quando è ricostruita. Con un export vero
+   la si prende dal nodo del paese (`place=village`), perché scriverla a mano
+   significa sbagliarla — questa era fuori dal riquadro esportato di tre
+   chilometri, e tutto il paese sarebbe finito a sud-est del mondo. */
+let ORIGINE = { lat: 45.4758187, lon: 11.9438740 };
+
+/* Quanto paese si tiene attorno all'origine. L'export copre due chilometri e
+   mezzo di campagna con dentro tre frazioni: senza ritaglio si consegnerebbe
+   a Pionca, e il turno diventerebbe un viaggio. */
+const RAGGIO = 850;
+
+/* Le strade su cui si guida. Le altre — marciapiedi, ciclabili, sentieri —
+   restano fuori: un navigatore che ti manda sul percorso Nordic Walking non
+   sta calcolando un percorso, sta barando. */
+const GUIDABILI = ['motorway', 'trunk', 'primary', 'secondary', 'tertiary',
+  'unclassified', 'residential', 'living_street', 'service'];
 
 function creaRng(seme) {
   let x = seme >>> 0;
@@ -235,6 +249,30 @@ function distanzaSegmento(x, y, a, b) {
   return Math.hypot(x - (a[0] + dx * t), y - (a[1] + dy * t));
 }
 
+/* Le strade di OSM hanno un vertice solo dove serve al disegno: un rettilineo
+   di duecento metri è due punti. Per il gioco non basta — i nodi del grafo
+   sono quei vertici, e ci si aggancia sopra sia il civico («il nodo più vicino
+   al cancello») sia la rotta che il navigatore disegna. Con vertici ogni
+   duecento metri il cancello finiva agganciato a un incrocio lontano, e le
+   frecce puntavano a un punto che con la casa non c'entrava niente. Si taglia
+   ogni tratto lungo in pezzi da venticinque metri: la strada resta identica,
+   il grafo diventa fine. */
+function suddividi(mappa) {
+  const PASSO = 25;
+  mappa.strade.forEach((s) => {
+    const out = [s.punti[0]];
+    for (let i = 1; i < s.punti.length; i++) {
+      const a = s.punti[i - 1], b = s.punti[i];
+      const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const n = Math.max(1, Math.round(d / PASSO));
+      for (let k = 1; k <= n; k++) {
+        out.push([r1(a[0] + (b[0] - a[0]) * k / n), r1(a[1] + (b[1] - a[1]) * k / n)]);
+      }
+    }
+    s.punti = out;
+  });
+}
+
 /* Il punto di accesso: dove si accosta per consegnare, cioè il punto della
    mezzeria più vicino all'indirizzo. Non è un dettaglio — misurare la
    consegna dal centro dell'edificio significa chiedere all'auto di entrare
@@ -296,6 +334,45 @@ function grafo(mappa) {
   return { nodi, archi };
 }
 
+/* Il ritaglio taglia anche le strade, e lascia tronconi staccati dal resto:
+   un paio di curve che entrano nel riquadro e non si collegano a niente. Sulla
+   mappa non si vedono nemmeno, ma il navigatore ci si perde — se l'auto
+   finisce lì, il percorso più breve verso casa non esiste e le frecce
+   spariscono. Si tiene la componente connessa più grande e si buttano le
+   altre: la mappa è un ritaglio, e un ritaglio ha un bordo. */
+function potaTronconi(mappa) {
+  const g = grafo(mappa);
+  const adj = g.nodi.map(() => []);
+  g.archi.forEach(([a, b]) => { adj[a].push(b); adj[b].push(a); });
+  const comp = new Array(g.nodi.length).fill(-1);
+  let nc = 0, grandi = [];
+  for (let i = 0; i < g.nodi.length; i++) {
+    if (comp[i] >= 0) continue;
+    const q = [i]; comp[i] = nc;
+    for (let k = 0; k < q.length; k++) for (const v of adj[q[k]]) if (comp[v] < 0) { comp[v] = nc; q.push(v); }
+    grandi.push({ c: nc, n: q.length });
+    nc++;
+  }
+  grandi.sort((a, b) => b.n - a.n);
+  const buona = grandi[0].c;
+  const chiave = (x, y) => Math.round(x * 2) + ',' + Math.round(y * 2);
+  const indice = new Map();
+  g.nodi.forEach((n, i) => indice.set(chiave(n[0], n[1]), i));
+  const dentro = (p) => {
+    const i = indice.get(chiave(p[0], p[1]));
+    return i != null && comp[i] === buona;
+  };
+
+  const prima = mappa.strade.length;
+  mappa.strade = mappa.strade.filter((s) => s.punti.some(dentro));
+  // e un indirizzo che affacciava su una strada buttata non è più servibile
+  const vive = new Set(mappa.strade.map((s) => s.nome));
+  mappa.indirizzi = mappa.indirizzi.filter((i) => vive.has(i.via));
+  if (prima !== mappa.strade.length) {
+    console.log('potati ' + (prima - mappa.strade.length) + ' tronconi staccati dalla rete');
+  }
+}
+
 /* ---------- OpenStreetMap ----------
 
    Legge un export .osm (XML) o .geojson e ne ricava lo stesso formato della
@@ -304,22 +381,28 @@ function grafo(mappa) {
    scatole, e una sagoma a L costerebbe molto per una differenza che a
    quaranta all'ora non si vede), i civici diventano indirizzi. */
 function daOsm(testo) {
-  const nodi = new Map();
+  var m;
+  /* Prima passata: le coordinate dei nodi, ancora in gradi — l'origine non si
+     conosce finché non si trova il paese. */
+  const gradi = new Map();
   const reNodo = /<node[^>]*\bid=["'](\d+)["'][^>]*\blat=["']([-\d.]+)["'][^>]*\blon=["']([-\d.]+)["']/g;
-  let m;
-  while ((m = reNodo.exec(testo))) nodi.set(m[1], proietta(+m[2], +m[3]));
+  while ((m = reNodo.exec(testo))) gradi.set(m[1], { lat: +m[2], lon: +m[3] });
 
-  // i tag di un nodo servono per i civici sparsi (addr:housenumber sul punto)
-  const puntiCivici = [];
+  // i nodi con tag: il paese, i civici sparsi, i locali
+  const conTag = [];
   const reNodoTag = /<node\b[^>]*\bid=["'](\d+)["'][^>]*>([\s\S]*?)<\/node>/g;
   while ((m = reNodoTag.exec(testo))) {
-    const tag = leggiTag(m[2]);
-    if (tag['addr:housenumber'] && nodi.has(m[1])) {
-      puntiCivici.push({ p: nodi.get(m[1]), civico: tag['addr:housenumber'], via: tag['addr:street'] || '' });
-    }
+    const g = gradi.get(m[1]);
+    if (g) conTag.push({ id: m[1], g: g, tag: leggiTag(m[2]) });
   }
+  const paese = conTag.find((n) => n.tag.place && (n.tag.name || '').toLowerCase() === 'codiverno');
+  if (paese) ORIGINE = { lat: paese.g.lat, lon: paese.g.lon };
 
-  const strade = [], edifici = [], indirizzi = [];
+  const nodi = new Map();
+  gradi.forEach((g, id) => nodi.set(id, proietta(g.lat, g.lon)));
+  const dentro = (p) => Math.hypot(p.x, p.y) <= RAGGIO;
+
+  const strade = [], edifici = [];
   const reWay = /<way\b[^>]*>([\s\S]*?)<\/way>/g;
   while ((m = reWay.exec(testo))) {
     const corpo = m[1];
@@ -327,41 +410,142 @@ function daOsm(testo) {
     const rif = [...corpo.matchAll(/<nd\s+ref=["'](\d+)["']/g)].map((x) => nodi.get(x[1])).filter(Boolean);
     if (rif.length < 2) continue;
 
-    if (tag.highway && ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'unclassified',
-      'residential', 'living_street', 'service', 'track'].includes(tag.highway)) {
-      strade.push({
-        nome: tag.name || 'strada senza nome',
-        tipo: tag.highway === 'residential' || tag.highway === 'living_street' ? 'secondaria'
-          : (tag.highway === 'service' || tag.highway === 'track' ? 'vicolo' : 'principale'),
-        larghezza: +tag.width || (tag.highway === 'track' ? 4 : tag.highway === 'service' ? 5 : tag.highway === 'residential' ? 6.5 : 7.5),
-        punti: rif.map((p) => [r1(p.x), r1(p.y)])
+    if (tag.highway && GUIDABILI.indexOf(tag.highway) >= 0) {
+      /* Si tiene la strada se almeno un pezzo tocca il paese, e si taglia via
+         il resto: una via che esce dal ritaglio finirebbe in un nodo senza
+         uscita dove il navigatore manda e poi non sa tornare. */
+      const dentroQualcosa = rif.some(dentro);
+      if (!dentroQualcosa) continue;
+      let pezzo = [];
+      const chiudi = () => {
+        if (pezzo.length >= 2) {
+          strade.push({
+            nome: tag.name || (tag.highway === 'service' ? 'strada privata' : 'strada senza nome'),
+            tipo: tag.highway === 'residential' || tag.highway === 'living_street' ? 'secondaria'
+              : (tag.highway === 'service' ? 'vicolo' : 'principale'),
+            /* Larghezza dell'asfalto. OSM dà la carreggiata reale, che in un
+               paese veneto scende anche a tre metri e mezzo: giusto sulla
+               carta, impraticabile in gioco — con l'auto larga meno di due
+               metri restava un metro di margine per lato, e il pilota passava
+               metà del tempo nell'erba a cinque metri al secondo. Si tiene il
+               massimo fra il dato e un minimo giocabile. */
+            larghezza: Math.max(+tag.width || 0,
+              tag.highway === 'service' ? 5.5 : (tag.highway === 'residential' || tag.highway === 'living_street' ? 7 : 8)),
+            punti: pezzo.map((p) => [r1(p.x), r1(p.y)])
+          });
+        }
+        pezzo = [];
+      };
+      rif.forEach((p, i) => {
+        if (dentro(p)) pezzo.push(p);
+        else {
+          // un punto oltre il bordo si tiene comunque, per non troncare a metà
+          if (pezzo.length) { pezzo.push(p); chiudi(); }
+        }
+        if (i === rif.length - 1) chiudi();
       });
     } else if (tag.building) {
       const sc = scatola(rif);
+      if (!dentro({ x: sc.x, y: sc.y })) continue;
       const piani = +tag['building:levels'] || (tag.building === 'church' ? 4 : 2);
       sc.h = r1(+tag.height || piani * 3.2);
       sc.tipo = tag.building === 'church' || tag.amenity === 'place_of_worship' ? 'chiesa'
         : (tag.building === 'industrial' || tag.building === 'warehouse' ? 'capannone'
-          : (tag.amenity === 'restaurant' || tag.amenity === 'fast_food' ? 'pizzeria' : 'casa'));
+          : (tag.amenity === 'restaurant' || tag.amenity === 'fast_food' || tag.amenity === 'pub' ? 'pizzeria'
+            : (tag.building === 'public' || tag.amenity === 'school' ? 'pubblico' : 'casa')));
       if (tag.name) sc.nome = tag.name;
       if (tag['addr:housenumber']) { sc.civico = tag['addr:housenumber']; sc.via = tag['addr:street'] || ''; }
       edifici.push(sc);
     }
   }
 
-  // indirizzi: dai civici sugli edifici e da quelli sui nodi
-  edifici.forEach((e, i) => {
-    if (e.civico) indirizzi.push({ via: e.via, civico: e.civico, x: e.x, y: e.y, edificio: i });
-  });
-  puntiCivici.forEach((c) => indirizzi.push({ via: c.via, civico: c.civico, x: r1(c.p.x), y: r1(c.p.y), edificio: -1 }));
+  /* I campanili: in OSM sono spesso una parte a sé della chiesa, e comunque
+     l'altezza non c'è quasi mai. Una chiesa alta tre piani non si vede da
+     lontano, e in un paese piatto il campanile è l'unico riferimento. */
+  edifici.forEach((e) => { if (e.tipo === 'chiesa') e.h = Math.max(e.h, 16); });
 
-  const pizzeria = edifici.find((e) => e.tipo === 'pizzeria') || edifici[0];
+  const indirizzi = numeraCivici(strade, edifici, conTag, nodi);
+  const pizzeria = scegliPizzeria(edifici, conTag);
+
   return {
     nome: 'Codiverno', comune: 'Vigonza', provincia: 'PD',
     fonte: 'OpenStreetMap', attribuzione: '© contributori OpenStreetMap, ODbL',
-    origine: ORIGINE, strade, edifici, alberi: [], indirizzi,
-    pizzeria: { x: pizzeria.x, y: pizzeria.y, nome: pizzeria.nome || 'Pizzeria', via: pizzeria.via || '', civico: pizzeria.civico || '' }
+    civici: indirizzi.some((i) => i.reale) ? 'da OpenStreetMap dove ci sono, altrimenti numerati lungo la via'
+      : 'numerati dal generatore lungo la via (nell\'export non ce ne sono)',
+    origine: ORIGINE, strade, edifici, alberi: [], indirizzi, pizzeria
   };
+}
+
+/* I numeri civici. L'export di Codiverno ne contiene due in tutto, e un gioco
+   di consegne senza indirizzi non è un gioco: si numerano gli edifici lungo la
+   via a cui affacciano, dispari da una parte e pari dall'altra, come si fa
+   davvero. Sono numeri inventati su strade vere, e il file lo dichiara nel
+   campo `civici` — che il gioco mostra. Dove il civico c'è, vince quello. */
+function numeraCivici(strade, edifici, conTag, nodi) {
+  const perVia = new Map();
+  edifici.forEach((e, i) => {
+    if (e.tipo === 'capannone' && !e.nome) return;
+    let best = null;
+    strade.forEach((s, si) => {
+      if (s.nome === 'strada senza nome' || s.nome === 'strada privata') return;
+      for (let k = 1; k < s.punti.length; k++) {
+        const a = s.punti[k - 1], b = s.punti[k];
+        const dx = b[0] - a[0], dy = b[1] - a[1];
+        const l2 = dx * dx + dy * dy || 1;
+        let t = ((e.x - a[0]) * dx + (e.y - a[1]) * dy) / l2;
+        t = Math.max(0, Math.min(1, t));
+        const px = a[0] + dx * t, py = a[1] + dy * t;
+        const d = Math.hypot(e.x - px, e.y - py);
+        // da che parte della strada sta: decide pari o dispari
+        const lato = Math.sign((b[0] - a[0]) * (e.y - a[1]) - (b[1] - a[1]) * (e.x - a[0])) || 1;
+        if (!best || d < best.d) best = { d, si, nome: s.nome, lato, lungo: k + t, ax: px, ay: py };
+      }
+    });
+    // una casa a sessanta metri dalla strada più vicina è un capanno in mezzo
+    // ai campi: non ci si consegna la pizza
+    if (!best || best.d > 60) return;
+    if (!perVia.has(best.nome)) perVia.set(best.nome, []);
+    perVia.get(best.nome).push({ e, i, best });
+  });
+
+  const indirizzi = [];
+  perVia.forEach((lista, nome) => {
+    lista.sort((a, b) => a.best.lungo - b.best.lungo);
+    const prossimo = { '-1': 1, '1': 2 };
+    lista.forEach((v) => {
+      const chiave = String(v.best.lato);
+      const eraReale = v.e.civico != null;
+      const civico = eraReale ? v.e.civico : prossimo[chiave];
+      if (!eraReale) prossimo[chiave] += 2;
+      v.e.civico = civico;
+      v.e.via = nome;
+      indirizzi.push({
+        via: nome, civico: civico, x: v.e.x, y: v.e.y,
+        ax: r1(v.best.ax), ay: r1(v.best.ay), edificio: v.i, reale: eraReale
+      });
+    });
+  });
+  return indirizzi;
+}
+
+/* La pizzeria: se nell'export c'è un locale che ci somiglia si usa quello, con
+   il suo nome vero. Altrimenti la si apre nell'edificio più centrale — un
+   paese senza pizzeria non si può consegnare. */
+function scegliPizzeria(edifici, conTag) {
+  const locale = edifici.find((e) => e.tipo === 'pizzeria');
+  if (locale) {
+    return { x: locale.x, y: locale.y, nome: locale.nome || 'Pizzeria', via: locale.via || '', civico: locale.civico || '' };
+  }
+  let best = null;
+  edifici.forEach((e) => {
+    if (e.tipo === 'capannone') return;
+    const d = Math.hypot(e.x, e.y);
+    if (!best || d < best.d) best = { d, e };
+  });
+  const e = best.e;
+  e.tipo = 'pizzeria';
+  e.nome = 'Pizzeria di Codiverno';
+  return { x: e.x, y: e.y, nome: e.nome, via: e.via || '', civico: e.civico || '' };
 }
 
 function leggiTag(corpo) {
@@ -420,6 +604,11 @@ function main() {
     console.log('nessun export in dati/: mappa RICOSTRUITA (non è il rilievo di Codiverno)');
   }
 
+  suddividi(mappa);
+  /* Prima si pota, poi si calcolano gli accessi: al contrario un civico
+     restava accostato a un troncone appena buttato via, e il punto di consegna
+     finiva in mezzo ai campi. */
+  potaTronconi(mappa);
   accessi(mappa);
   const g = grafo(mappa);
   mappa.nodi = g.nodi;

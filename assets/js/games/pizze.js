@@ -47,7 +47,15 @@ var GRIP_STRADA = 6.5;
 var GRIP_PRATO = 2.2;
 var AUTO_L = 4.1, AUTO_W = 1.75, AUTO_R = 1.5;
 
-var VEL_CROCIERA = 12.5;   // m/s: la media che il giro ideale dà per buona
+var VEL_CROCIERA = 9;      // m/s: usata solo quando una rotta non esiste
+/* Il giro ideale è un'auto che non sbaglia niente: nessuna esitazione a un
+   incrocio, nessuna manovra, nessuna frenata di troppo. Chi guida davvero ci
+   mette di più, e la differenza è misurabile — il pilota simulato, che pure
+   conosce la strada a memoria, impiega in media un terzo in più di quanto dice
+   il modello. Il calore si concede su quel tempo lì, non su quello teorico:
+   altrimenti «margine 2×» vorrebbe dire in realtà «1,5×», e il numero scritto
+   nella schermata del livello sarebbe una bugia. */
+var ATTRITO_REALE = 1.4;
 var SOSTA = 3.5;           // s per fermarsi, scendere e consegnare
 var RAGGIO_CONSEGNA = 13;  // m dal civico
 var VEL_CONSEGNA = 4.5;    // m/s: sopra questa non si consegna, si passa e basta
@@ -85,11 +93,15 @@ function config(level) {
        difficoltà: al primo livello si arriva con calma, al decimo bisogna
        sapere dove si va. */
     /* Il calore concesso in più rispetto al giro ideale. Scende piano: il
-       calore che resta alla consegna cala liscio (36% al primo turno, 6% al
-       decimo per un guidatore medio), ed è quello il vero indicatore di
-       difficoltà — la percentuale di turni vinti, sopra a un margine così
-       stretto, diventa testa o croce. */
-    margine: Math.max(1.20, 2.1 - level * 0.09),
+       calore che resta alla consegna cala liscio, ed è quello il vero
+       indicatore di difficoltà — la percentuale di turni vinti, sopra a un
+       margine così stretto, diventa testa o croce.
+
+       Il margine si conta sul tempo *realistico* (il giro ideale già
+       corretto da ATTRITO_REALE), non su quello teorico: «calore al 130%»
+       vuol dire davvero un terzo di tempo in più di quanto ci mette chi la
+       strada la sa. */
+    margine: Math.max(1.05, 1.6 - level * 0.06),
     puntiConsegna: 40 * level,
     bonusTurno: 120 * level
   };
@@ -159,6 +171,52 @@ function daNodo(s) {
 
 function distanzaTra(a, b) { return daNodo(a).dist[b]; }
 
+/* Quanto ci mette un'auto a percorrere una rotta. Non è la distanza divisa per
+   una velocità media: è un giro ideale calcolato sulla forma della strada, con
+   la velocità che ogni curva permette e poi due passate — avanti per
+   l'accelerazione, indietro per la frenata — perché a un incrocio non ci si
+   arriva a cinquanta e non si riparte a cinquanta.
+
+   La stima piatta funzionava sul paese ricostruito, tutto rettilinei lunghi, e
+   si è rotta il giorno in cui è arrivata la mappa vera: fra le curve di Via
+   Monte Grappa il pilota teneva sette metri al secondo contro i dodici e mezzo
+   dati per buoni, e ogni consegna arrivava fredda. Il tempo concesso deve
+   venire dalla strada che c'è, non da una media decisa a tavolino. */
+var cacheTempo = {};
+function tempoPercorso(a, b) {
+  var chiave = a + '>' + b;
+  if (cacheTempo[chiave] != null) return cacheTempo[chiave];
+  var nodi = percorso(a, b);
+  var t;
+  if (nodi.length < 2) {
+    t = distanzaTra(a, b) / VEL_CROCIERA;
+  } else {
+    var g = grafo(), i;
+    var p = nodi.map(function (n) { return g.nodi[n]; });
+    var ds = [], v = [];
+    for (i = 0; i < p.length - 1; i++) ds.push(Math.hypot(p[i + 1][0] - p[i][0], p[i + 1][1] - p[i][1]));
+    for (i = 0; i < p.length; i++) {
+      var curva = 0;
+      if (i > 0 && i < p.length - 1) {
+        var a1 = Math.atan2(p[i][1] - p[i - 1][1], p[i][0] - p[i - 1][0]);
+        var a2 = Math.atan2(p[i + 1][1] - p[i][1], p[i + 1][0] - p[i][0]);
+        curva = Math.abs(a2 - a1);
+        if (curva > Math.PI) curva = 2 * Math.PI - curva;
+      }
+      v.push(Math.max(3, Math.min(VEL_MAX, VEL_MAX * (1.15 - curva * 0.95))));
+    }
+    v[0] = Math.min(v[0], 4);                       // si parte da fermi
+    v[v.length - 1] = Math.min(v[v.length - 1], 4); // e ci si ferma
+    for (i = 1; i < v.length; i++) v[i] = Math.min(v[i], Math.sqrt(v[i - 1] * v[i - 1] + 2 * ACCEL * ds[i - 1]));
+    for (i = v.length - 2; i >= 0; i--) v[i] = Math.min(v[i], Math.sqrt(v[i + 1] * v[i + 1] + 2 * FRENO * ds[i]));
+    t = 0;
+    for (i = 0; i < ds.length; i++) t += ds[i] / Math.max(2, (v[i] + v[i + 1]) / 2);
+    t *= ATTRITO_REALE;
+  }
+  cacheTempo[chiave] = t;
+  return t;
+}
+
 function percorso(a, b) {
   var prec = daNodo(a).prec, out = [b], v = b, giri = 0;
   while (v !== a && prec[v] >= 0 && giri++ < 4000) { v = prec[v]; out.push(v); }
@@ -188,7 +246,7 @@ function giroVicinoPerVolta(partenza, fermate) {
       if (d < bd) { bd = d; best = k; }
     }
     var i = restanti.splice(best, 1)[0];
-    tot += bd / VEL_CROCIERA + SOSTA;
+    tot += tempoPercorso(da, fermate[i]) + SOSTA;
     tempi[i] = tot;
     ordine.push(i);
     da = fermate[i];
@@ -291,10 +349,9 @@ TG.registry.register({
   scoreLabel: 'Punti',
   controls: 'guida',
   viewport: { w: 360, h: 480 },
-  howto: '<b>Comandi:</b> il <b>volante</b> si gira prendendolo dal pomello, ' +
-    '<b>GAS</b> accelera, <b>FRENO</b> frena (e da fermo fa retromarcia); da ' +
-    'tastiera frecce o WASD. Si guida per le strade di <b>Codiverno</b>, ' +
-    'visti da sopra l\'auto. ' +
+  howto: '<b>Comandi:</b> ◀ ▶ sterzano, <b>GAS</b> accelera, <b>FRENO</b> frena ' +
+    '(e da fermo fa retromarcia); da tastiera frecce o WASD. Si guida per le ' +
+    'strade di <b>Codiverno</b>, visti da sopra l\'auto. ' +
     '<b>Si vince consegnando tutte le pizze calde:</b> ogni pizza ha la sua ' +
     'barra di calore, che scende da sola e non si ferma mai — nemmeno mentre ' +
     'sei fermo, nemmeno per quelle che ti aspettano sul bancone. Se una arriva ' +
@@ -323,7 +380,7 @@ TG.registry.register({
     var store = window.TG && TG.storage ? TG.storage : null;
     var m = mappa();
 
-    var cfg, auto, stato, conto, colore, volanteScattato;
+    var cfg, auto, stato, conto, colore;
     var consegne, carico, fatte, prossimoCarico, acc, finito, note, urti, scossa;
     var cam, bordi, limiti, obiettivo, rottaNodi, ricalcolo, ultimoBeep, freddaDa, ultimaConsegna;
 
@@ -382,12 +439,13 @@ TG.registry.register({
          si raffredda mentre torni a prenderlo. Se il tempo partisse dal
          momento in cui lo raccogli, restare fermi dopo una consegna sarebbe
          gratis, e il profilo «fermo» vincerebbe. */
-      var rientro = distanzaTra(qui, pizzeria) / VEL_CROCIERA;
+      var rientro = tempoPercorso(qui, pizzeria);
       scelte.forEach(function (c, i) {
         c.presa = true;
         c.budget = (rientro + giro.tempi[i]) * cfg.margine;
         c.calore = 1;
         c.inMano = false;      // sul bancone finché non passi a prenderle
+        c.ordine = giro.ordine.indexOf(i);
       });
       carico = scelte;
       prossimoCarico = false;
@@ -446,10 +504,16 @@ TG.registry.register({
         obiettivo = { x: m.pizzeria.ax, y: m.pizzeria.ay, faro: [m.pizzeria.x, m.pizzeria.y],
                       tipo: 'pizzeria', nome: m.pizzeria.nome };
       } else {
-        var best = null, bd = Infinity;
+        /* Il navigatore segue *l'ordine su cui è stato calcolato il calore*,
+           non la fermata più vicina a dove sei adesso. Sembrava più naturale
+           mandare sempre alla più vicina, ma è un ordine diverso da quello del
+           budget: con tre pizze in macchina l'ultima aspettava un giro in più
+           di quello che le era stato concesso, e arrivava fredda seguendo le
+           indicazioni del gioco stesso. Deviare resta permesso — le consegne
+           si contano per vicinanza, non per obbedienza. */
+        var best = null;
         carico.forEach(function (c) {
-          var d = distanzaTra(qui, nodoVicino(c.ax, c.ay));
-          if (d < bd) { bd = d; best = c; }
+          if (!best || (c.ordine || 0) < (best.ordine || 0)) best = c;
         });
         if (!best) { obiettivo = null; rottaNodi = []; return; }
         obiettivo = { x: best.ax, y: best.ay, faro: [best.x, best.y], tipo: 'consegna', pizza: best };
@@ -491,7 +555,6 @@ TG.registry.register({
       fatte = 0; carico = []; prossimoCarico = false;
       acc = 0; finito = false; note = []; urti = 0; scossa = 0;
       ricalcolo = 0; rottaNodi = []; obiettivo = null; freddaDa = null; ultimaConsegna = null;
-      volanteScattato = false;
       colore = leggiColore();
       nuovoCarico();
       carico.forEach(function (c) { c.inMano = true; });   // il primo carico è già in mano
@@ -502,7 +565,6 @@ TG.registry.register({
     function passo(dt) {
       var sinistra = api.input.isDown('left'), destra = api.input.isDown('right');
       var gas = api.input.isDown('up'), freno = api.input.isDown('down');
-      var vol = api.input.volante;
 
       if (stato === 'forno') {
         var az, tap, cifra;
@@ -515,11 +577,6 @@ TG.registry.register({
           var k = indiceColoreA(tap.x, tap.y);
           if (k >= 0) scegliColore(k);
         }
-        if (vol && vol.attivo && Math.abs(vol.valore) > 0.5 && !volanteScattato) {
-          scegliColore(colore + (vol.valore > 0 ? 1 : -1));
-          volanteScattato = true;
-        }
-        if (!vol || !vol.attivo || Math.abs(vol.valore) < 0.2) volanteScattato = false;
         conto -= dt;
         var sec = Math.ceil(conto);
         if (sec < ultimoBeep && sec >= 1) { ultimoBeep = sec; api.sfx.tone(420, 0.1, 'square', 0.08); }
@@ -536,8 +593,11 @@ TG.registry.register({
       while (api.input.takeTap()) { }
       while (api.input.takeDigit()) { }
 
-      var bersaglio = (vol && vol.attivo) ? vol.valore : (sinistra ? -1 : 0) + (destra ? 1 : 0);
-      auto.sterzo += (bersaglio - auto.sterzo) * Math.min(1, ((vol && vol.attivo) ? 18 : 10) * dt);
+      /* Lo sterzo non scatta, si gira: i due tasti danno tutto o niente e
+         questa è la molla che ci mette in mezzo una frazione di secondo —
+         senza, a cinquanta all'ora ogni tocco manderebbe l'auto di traverso. */
+      var bersaglio = (sinistra ? -1 : 0) + (destra ? 1 : 0);
+      auto.sterzo += (bersaglio - auto.sterzo) * Math.min(1, 10 * dt);
 
       var inStrada = sullaStrada(auto.x, auto.y);
       auto.inStrada = inStrada;
@@ -547,9 +607,15 @@ TG.registry.register({
       var avanti = auto.vx * c + auto.vy * s;
       var lato = -auto.vx * s + auto.vy * c;
 
-      // lo sterzo prende con la velocità: da fermi il muso non gira
+      /* Lo sterzo prende con la velocità: da fermi il muso non gira.
+
+         Il segno è meno, e non è un dettaglio: `h` è l'angolo con la
+         convenzione di sempre (x a est, y a nord, angoli in senso
+         antiorario), mentre la destra dello schermo è il versore
+         (sin h, −cos h), che è orario. Sommando invece di sottrarre,
+         tenendo «destra» l'auto girava a sinistra. */
       var presa = Math.min(1, Math.abs(avanti) / 3.5) * (inStrada ? 1 : 0.8);
-      auto.h += auto.sterzo * STERZO * presa * dt * (avanti < 0 ? -1 : 1);
+      auto.h -= auto.sterzo * STERZO * presa * dt * (avanti < 0 ? -1 : 1);
       c = Math.cos(auto.h); s = Math.sin(auto.h);
 
       if (gas && avanti >= -0.1) avanti += ACCEL * dt;
@@ -627,7 +693,10 @@ TG.registry.register({
 
     function sullaStrada(x, y) {
       for (var i = 0; i < m.strade.length; i++) {
-        var s = m.strade[i], p = s.punti, mezzo = s.larghezza / 2 + 0.6;
+        /* Un metro e mezzo di tolleranza oltre l'asfalto: in paese la
+           banchina si usa, e chiedere di stare al centimetro dentro la riga
+           in curva vorrebbe dire arrancare per metà del percorso. */
+        var s = m.strade[i], p = s.punti, mezzo = s.larghezza / 2 + 1.5;
         for (var k = 1; k < p.length; k++) {
           var a = p[k - 1], b = p[k];
           if (Math.abs(x - a[0]) > 60 && Math.abs(x - b[0]) > 60) continue;
@@ -669,8 +738,14 @@ TG.registry.register({
         var vn = auto.vx * wx + auto.vy * wy;
         if (vn < 0) {
           var forza = Math.min(1, -vn / 12);
-          auto.vx -= vn * wx * 1.2; auto.vy -= vn * wy * 1.2;
-          auto.vx *= 0.4; auto.vy *= 0.4;
+          /* Si toglie la sola componente contro il muro: l'auto scivola lungo
+             la parete invece di incollarcisi. Prima ogni fotogramma di
+             contatto tagliava il 60% della velocità, e in un angolo fra due
+             case l'auto restava piantata anche a gas aperto — trappola vera,
+             non difficoltà. Una botta forte costa lo stesso. */
+          auto.vx -= vn * wx; auto.vy -= vn * wy;
+          if (forza > 0.25) { auto.vx *= 0.55; auto.vy *= 0.55; }
+          else { auto.vx *= 0.94; auto.vy *= 0.94; }
           if (!auto.aContatto) {
             urti++;
             scossa = 0.2 * forza + 0.06;
@@ -1127,7 +1202,7 @@ TG.registry.register({
       ctx.fillText('Le pizze escono dal forno', W / 2, H * 0.20);
       ctx.font = '12px system-ui, sans-serif';
       ctx.fillStyle = 'rgba(230,237,243,0.8)';
-      ctx.fillText('Colore dell\'auto — volante, 1-9 o un tocco', W / 2, H * 0.255);
+      ctx.fillText('Colore dell\'auto — ◀ ▶, 1-9 o un tocco', W / 2, H * 0.255);
       for (var i = 0; i < COLORI.length; i++) {
         var p = posizioneColore(i);
         ctx.fillStyle = COLORI[i].tinta;
@@ -1148,8 +1223,16 @@ TG.registry.register({
       ctx.fillText(String(Math.max(1, Math.ceil(conto))), W / 2, H * 0.60);
       ctx.font = '11px system-ui, sans-serif';
       ctx.fillStyle = 'rgba(230,237,243,0.6)';
+      /* Fonte e civici, scritti ogni volta che si parte. Le strade sono vere,
+         i numeri quasi mai: dirlo costa una riga e vale più di un README che
+         nessuno apre. */
       ctx.fillText(m.nome + ' (' + m.comune + ') · ' +
-        (m.fonte === 'OpenStreetMap' ? '© OpenStreetMap' : 'mappa ricostruita'), W / 2, H - 10);
+        (m.fonte === 'OpenStreetMap' ? '© OpenStreetMap' : 'mappa ricostruita'), W / 2, H - 22);
+      if (m.civici) {
+        ctx.font = '10px system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(230,237,243,0.45)';
+        ctx.fillText('civici ' + m.civici, W / 2, H - 9);
+      }
     }
 
     function state() {
