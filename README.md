@@ -359,18 +359,22 @@ Stato attuale (percentuale di livelli vinti dal profilo indicato):
 | Orda · medio | 100% | 100% | 93% | 98% | 78% |
 | Orda · bravo | 100% | 100% | 85% | 95% | 85% |
 | Pizze · fermo | 0% | 0% | 0% | 0% | 0% |
-| Pizze · medio | 100% | 100% | 100% | 93% | 93% |
-| Pizze · bravo | 100% | 100% | 100% | 93% | 100% |
+| Pizze · medio | 100% | 75% | 48% | 68% | 18% |
+| Pizze · bravo | 100% | 100% | 80% | 90% | 100% |
 
-Le righe di Pizze vanno lette con due avvertenze. La prima: la percentuale di
-turni vinti dice poco, perché «arrivato con il 6% di calore» e «arrivato con il
-40%» contano tutti e due come una vittoria. Il numero che descrive davvero la
-difficoltà è **quanto calore resta sulla consegna più tirata**, e quello scende
-liscio — profilo medio: 39% al 1° turno, 30% al 5°, 6% al 10°; profilo bravo:
-53%, 49%, 33%. La seconda: la colonna «bravo» è piatta al 100% e resterà tale,
-perché il tetto di questo gioco è la velocità di chi guida, e il bot guida al
-limite dell'auto con la rotta perfetta già in mano. Non è un livello facile: è
-un pilota che non sbaglia strada.
+Le righe di Pizze vanno lette sapendo che la percentuale di turni vinti dice
+solo metà della storia: «arrivato con il 3% di calore» e «arrivato con il 40%»
+contano tutti e due come una vittoria. Il numero che descrive la difficoltà è
+**quanto calore resta sulla consegna più tirata**: profilo medio 38% al 1°
+turno, 13% al 5°, 25% al 10°; profilo bravo 69%, 59%, 19%.
+
+Fino a ieri qui c'era scritto che la colonna «bravo» sarebbe rimasta piatta al
+100%, perché il tetto del gioco è la velocità di chi guida e il bot guida al
+limite con la rotta già in mano. **Il traffico ha smentito la previsione**: con
+le auto in strada e i semafori, anche il pilota che non sbaglia una curva perde
+qualche turno (80% al 5°, 90% al 7°), perché una coda o un rosso preso male non
+si recuperano guidando meglio. È la differenza fra un gioco di traiettorie e un
+gioco di traffico, e si vede solo misurandola.
 
 La riga «bravo» di Mattoni è salita al 7° livello — dal 20% al 60% — da quando
 il fantasma non compare più sotto il 12°. È l'effetto che il bot subiva più di
