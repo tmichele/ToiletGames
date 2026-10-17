@@ -243,6 +243,44 @@ body.is-playing .topbar__word {
 .board__score { font-weight: 700; }
 .board__empty { color: var(--fg-dim); font-style: italic; font-family: var(--font); }
 
+/* La riga del giocatore nella classifica globale: si deve trovare al volo in
+   mezzo ad altri nove nomi, perché è l'unica che interessa davvero. */
+.board li.is-io { color: var(--accent-2); font-weight: 700; }
+.board li.is-io .board__rank,
+.board li.is-io .board__lvl { color: var(--accent-2); }
+
+.board__tit {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+  margin: 14px 0 4px;
+}
+.board__tit:first-child { margin-top: 0; }
+
+/* Stato della parte in rete: carico / non si raggiunge / sei in gara come X.
+   Un elenco vuoto senza questa riga direbbe due cose diverse con la stessa
+   faccia — «non ha ancora giocato nessuno» e «la rete non va». */
+.board__stato { font-size: 0.74rem; color: var(--fg-dim); margin: 0 0 8px; line-height: 1.45; }
+.board__stato.is-off { font-style: italic; }
+.board__stato.is-err { color: var(--bad); }
+.board__stato.is-warn { color: var(--warn); }
+
+.form-nome { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.form-nome__input {
+  flex: 1 1 140px;
+  min-width: 0;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 1rem;
+}
+.form-nome__input:focus { outline: 2px solid var(--accent-2); outline-offset: 1px; }
+.form-nome .btn { flex: 0 0 auto; }
+
 .hint { color: var(--fg-dim); font-size: 0.78rem; line-height: 1.5; margin: 12px 0 0; }
 .hint b { color: var(--fg); font-weight: 600; }
 

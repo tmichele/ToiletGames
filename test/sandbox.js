@@ -41,6 +41,43 @@ function loadGames() {
   return { defs, util: ctx.TG.util };
 }
 
+/* Carica i moduli di base (storage, profilo, classifica globale, punteggi) in
+   una sandbox con un localStorage e un fetch finti. Serve ai test della
+   classifica globale: quella parte non tocca il canvas, tocca la rete, e
+   provarla nel browser vorrebbe dire un vero progetto Firebase per ogni
+   esecuzione. `fetch` lo passa il chiamante — di solito il Firebase finto. */
+function loadCore(opzioni) {
+  const o = opzioni || {};
+  const memoria = {};
+  const ctx = {
+    console, Math, Date, JSON, isNaN, parseInt, parseFloat, String, Number,
+    Object, Array, Error, RegExp, Boolean, Promise, setTimeout, clearTimeout,
+    encodeURIComponent, decodeURIComponent, AbortController,
+    localStorage: {
+      getItem: (k) => (Object.prototype.hasOwnProperty.call(memoria, k) ? memoria[k] : null),
+      setItem: (k, v) => { memoria[k] = String(v); },
+      removeItem: (k) => { delete memoria[k]; }
+    },
+    fetch: o.fetch || null,
+    TG_CLASSIFICA: o.classifica || null
+  };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+
+  const run = (rel) => vm.runInContext(
+    fs.readFileSync(path.join(ROOT, rel), 'utf8'), ctx, { filename: rel }
+  );
+
+  run('assets/js/core/util.js');
+  ctx.TG.versione = { numero: o.versione || 0, data: '' };
+  run('assets/js/core/storage.js');
+  run('assets/js/core/profile.js');
+  run('assets/js/core/nuvola.js');
+  run('assets/js/core/registry.js');
+  run('assets/js/core/scores.js');
+  return { TG: ctx.TG, memoria: memoria, ctx: ctx };
+}
+
 /* Audio finto: qualunque metodo chiamato non fa niente. */
 const SFX = new Proxy({}, { get: () => () => {} });
 
@@ -91,4 +128,4 @@ function makeGame(def, util, level) {
   return { game, api, input, events };
 }
 
-module.exports = { loadGames, makeGame, makeInput, SFX, ROOT };
+module.exports = { loadGames, loadCore, makeGame, makeInput, SFX, ROOT };

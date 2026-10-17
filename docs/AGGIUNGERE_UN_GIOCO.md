@@ -98,13 +98,16 @@ numero nel meta (vedi «Versione» nel README).
 | `api.addScore(n)` | somma punti (aggiorna l'HUD) |
 | `api.setScore(n)` | imposta il punteggio |
 | `api.levelComplete({bonus, message})` | livello superato: il motore mostra il riepilogo e passa al successivo |
-| `api.gameOver({message})` | partita finita: il motore salva il risultato in classifica |
+| `api.gameOver({message})` | partita finita: il motore salva il risultato in classifica (e lo spedisce alla classifica globale, se è configurata) |
 | `api.input` | `take()`, `takeTap()`, `takeDigit()`, `isDown(azione)`, `pointer` |
 | `api.util` | `clamp`, `randInt`, `randFloat`, `pick`, `shuffle`, `lerp`, `circleRectHit`, `roundRect`, `opponentSpeedRatio` |
 | `api.sfx` | `click`, `pick`, `hit`, `bounce`, `fail`, `tone(freq, durata, tipo, volume)`; per un suono continuo `motoreImposta(giri, gas, slitta)`, da rinfrescare a ogni `update` — si spegne da solo se non lo chiami più |
 
 Il gioco **non** deve gestire pausa, ridimensionamento, ciclo di rendering,
-classifica o cambio livello: sono già del motore. Nemmeno la schermata delle
+classifica o cambio livello: sono già del motore. Nemmeno la classifica
+globale: un gioco nuovo ci entra senza una riga di codice, perché il motore
+spedisce quello che `gameOver` gli consegna — l'`id` del gioco diventa la sua
+classifica in Firebase. Nemmeno la schermata delle
 istruzioni: il testo di `howto` finisce nella finestra che si apre dall'icona ❓
 in alto, e la classifica in quella dell'icona 🏆.
 

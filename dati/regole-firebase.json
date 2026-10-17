@@ -1,0 +1,34 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "nomi": {
+      "$slug": {
+        ".read": false,
+        ".write": "auth != null && (!data.exists() || data.val() === auth.uid)",
+        ".validate": "newData.isString() && newData.val() === auth.uid"
+      }
+    },
+
+    "punteggi": {
+      "$gioco": {
+        ".read": true,
+        ".indexOn": "punti",
+
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid && (!data.exists() || newData.child('punti').val() >= data.child('punti').val())",
+          ".validate": "newData.hasChildren(['nome', 'punti', 'livello']) && root.child('nomi').child(newData.child('nome').val().toLowerCase().replace(' ', '-')).val() == auth.uid",
+
+          "nome": { ".validate": "newData.isString() && newData.val().length <= 14 && newData.val().matches(/^[A-Za-z0-9_-]+( [A-Za-z0-9_-]+)*$/)" },
+          "punti": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 10000000" },
+          "livello": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 999" },
+          "da": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 999" },
+          "quando": { ".validate": "newData.isNumber()" },
+          "v": { ".validate": "newData.isNumber()" },
+          "$altro": { ".validate": false }
+        }
+      }
+    }
+  }
+}

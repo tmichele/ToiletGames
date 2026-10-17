@@ -64,8 +64,15 @@ TG.ui = (function () {
           return TG.util.escapeHtml(g.title) + ' liv. ' + TG.scores.checkpoint(g.id);
         }).join('</b>, <b>') + '</b></p>');
     }
-    lines.push('<p class="stats-line">Giocatore: <b>' + TG.util.escapeHtml(TG.profile.getName()) + '</b>' +
-      (TG.storage.isPersistent ? '' : ' · <i>classifiche non salvabili su questo browser</i>') + '</p>');
+    var nuv = (TG.nuvola && TG.nuvola.stato()) || { attiva: false };
+    var riga = 'Giocatore: <b>' + TG.util.escapeHtml(TG.profile.getName()) + '</b>';
+    if (nuv.attiva) {
+      riga += nuv.nome
+        ? ' · 🌍 in classifica globale' + (nuv.inAttesa ? ' <i>(un risultato in coda)</i>' : '')
+        : ' · <i>🌍 prendi un nome per entrare in classifica globale</i>';
+    }
+    if (!TG.storage.isPersistent) riga += ' · <i>classifiche non salvabili su questo browser</i>';
+    lines.push('<p class="stats-line">' + riga + '</p>');
     el.homeStats.innerHTML = lines.join('');
   }
 
@@ -96,31 +103,119 @@ TG.ui = (function () {
 
   /* ---------- classifica ---------- */
 
+  function rigaBoard(pos, nome, livello, punti, extra, classe) {
+    var li = document.createElement('li');
+    if (classe) li.className = classe;
+    li.innerHTML =
+      '<span class="board__rank">' + pos + '.</span>' +
+      '<span class="board__name">' + TG.util.escapeHtml(nome) + '</span>' +
+      (extra || '') +
+      '<span class="board__lvl">L' + livello + '</span>' +
+      '<span class="board__score">' + punti + '</span>';
+    return li;
+  }
+
+  function vuota(ol, testo) {
+    ol.innerHTML = '';
+    var li = document.createElement('li');
+    li.className = 'board__empty';
+    li.textContent = testo;
+    ol.appendChild(li);
+  }
+
   function renderBoard(gameId, highlightId) {
     var list = TG.scores.top(gameId);
     var ol = el.board;
     ol.innerHTML = '';
     if (!list.length) {
-      var li = document.createElement('li');
-      li.className = 'board__empty';
-      li.textContent = 'Ancora nessun risultato: la prima partita entra di sicuro.';
-      ol.appendChild(li);
+      vuota(ol, 'Ancora nessun risultato: la prima partita entra di sicuro.');
       return;
     }
     list.forEach(function (e, i) {
-      var li = document.createElement('li');
-      if (highlightId && e.id === highlightId) li.className = 'is-new';
       // se la partita era iniziata da un checkpoint lo si dice: i punti dei
       // livelli saltati mancano, ed è giusto poterlo leggere in classifica
       var partenza = (e.from && e.from > 1) ? '<span class="board__from">da ' + e.from + '</span>' : '';
-      li.innerHTML =
-        '<span class="board__rank">' + (i + 1) + '.</span>' +
-        '<span class="board__name">' + TG.util.escapeHtml(e.name) + '</span>' +
-        partenza +
-        '<span class="board__lvl">L' + e.level + '</span>' +
-        '<span class="board__score">' + e.score + '</span>';
-      ol.appendChild(li);
+      ol.appendChild(rigaBoard(i + 1, e.name, e.level, e.score, partenza,
+        (highlightId && e.id === highlightId) ? 'is-new' : ''));
     });
+  }
+
+  /* La classifica globale arriva dalla rete, quindi ha tre stati da mostrare e
+     non uno: la sto caricando, non si raggiunge, eccola. Nasconderne due
+     lascerebbe un elenco vuoto a dire due cose diverse — «nessuno ha ancora
+     giocato» e «la rete non va» — che è la cosa peggiore da far indovinare.
+     `giro` scarta la risposta di un gioco che non è più quello aperto: aprire e
+     chiudere due classifiche di fretta altrimenti mescolerebbe le righe. */
+  var giro = 0;
+
+  function renderBoardGlobale(gameId) {
+    if (!el.boardGlobale) return;
+    giro++;
+    var mio = giro;
+    var st = (TG.nuvola && TG.nuvola.stato()) || { attiva: false };
+
+    el.boardTitGlobale.hidden = !st.attiva;
+    el.boardGlobale.hidden = !st.attiva;
+
+    if (!st.attiva) {
+      el.boardStato.className = 'board__stato is-off';
+      el.boardStato.textContent = 'Classifica globale non attiva su questa copia: ' +
+        'i risultati restano su questo browser.';
+      return;
+    }
+
+    el.boardStato.className = 'board__stato';
+    el.boardStato.textContent = 'Carico la classifica…';
+    vuota(el.boardGlobale, '…');
+
+    TG.nuvola.top(gameId, function (err, righe) {
+      if (mio !== giro) return;
+      if (err) {
+        el.boardStato.className = 'board__stato is-err';
+        el.boardStato.textContent = 'Classifica globale non raggiungibile (' + err.message + '). ' +
+          (st.inAttesa ? 'Il tuo risultato è in coda e riparte da solo.' : 'Qui sotto ci sei tu.');
+        el.boardGlobale.hidden = true;
+        return;
+      }
+      if (!righe.length) {
+        vuota(el.boardGlobale, 'Nessuno ancora: il primo punteggio è primo per definizione.');
+      } else {
+        el.boardGlobale.innerHTML = '';
+        righe.forEach(function (r, i) {
+          var partenza = (r.da && r.da > 1) ? '<span class="board__from">da ' + r.da + '</span>' : '';
+          el.boardGlobale.appendChild(
+            rigaBoard(i + 1, r.nome, r.livello, r.punti, partenza, r.io ? 'is-io' : '')
+          );
+        });
+      }
+      el.boardStato.className = 'board__stato';
+      el.boardStato.textContent = st.nome
+        ? 'Sei in gara come ' + st.nome + (st.inAttesa ? ' · un risultato è in coda' : '')
+        : 'Prendi un nome col pulsante 👤 per entrare in classifica.';
+    });
+  }
+
+  /* ---------- il nome del giocatore ---------- */
+
+  function renderNome(messaggio, classe) {
+    if (!el.inputNome) return;
+    var st = (TG.nuvola && TG.nuvola.stato()) || { attiva: false, nome: '' };
+    el.nomeIntro.textContent = st.attiva
+      ? 'In classifica globale i nomi sono unici: questo diventa tuo e nessun ' +
+        'altro può usarlo. Lettere, numeri, trattino — al massimo ' + TG.profile.MAX + '.'
+      : 'Il nome firma i tuoi risultati in classifica. Resta su questo browser.';
+    var attuale = st.nome || TG.profile.getName();
+    el.inputNome.value = TG.profile.isDefault(attuale) ? '' : attuale;
+    el.nomeStato.className = 'board__stato' + (classe ? ' ' + classe : '');
+    el.nomeStato.textContent = messaggio || '';
+  }
+
+  function nomeInserito() { return el.inputNome ? el.inputNome.value : ''; }
+
+  function nomeInAttesa(attesa) {
+    if (!el.nomeOk) return;
+    el.nomeOk.disabled = !!attesa;
+    el.nomeOk.textContent = attesa ? 'Un attimo…' : 'Prendi questo nome';
   }
 
   /* ---------- overlay ---------- */
@@ -146,13 +241,16 @@ TG.ui = (function () {
 
   /* ---------- finestre di classifica e istruzioni ---------- */
 
+  var TITOLI = { classifica: 'Classifica', istruzioni: 'Come si gioca', nome: 'Il tuo nome' };
+
   function showModal(quale) {
-    var inClassifica = quale === 'classifica';
-    el.modalTitle.textContent = (inClassifica ? 'Classifica' : 'Come si gioca') +
-      (el.modalGame ? ' · ' + el.modalGame.title : '');
-    el.modalBoard.hidden = !inClassifica;
-    el.modalHelp.hidden = inClassifica;
+    el.modalTitle.textContent = (TITOLI[quale] || '') +
+      (el.modalGame && quale !== 'nome' ? ' · ' + el.modalGame.title : '');
+    el.modalBoard.hidden = quale !== 'classifica';
+    el.modalHelp.hidden = quale !== 'istruzioni';
+    if (el.modalNome) el.modalNome.hidden = quale !== 'nome';
     el.modal.hidden = false;
+    if (quale === 'nome' && el.inputNome) el.inputNome.focus({ preventScroll: true });
   }
 
   function hideModal() { el.modal.hidden = true; }
@@ -179,6 +277,10 @@ TG.ui = (function () {
     setLevel: setLevel,
     setBest: setBest,
     renderBoard: renderBoard,
+    renderBoardGlobale: renderBoardGlobale,
+    renderNome: renderNome,
+    nomeInserito: nomeInserito,
+    nomeInAttesa: nomeInAttesa,
     showOverlay: showOverlay,
     hideOverlay: hideOverlay,
     showModal: showModal,

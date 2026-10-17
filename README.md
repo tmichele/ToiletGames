@@ -185,10 +185,44 @@ pareggiano, poi la superano fino al 135%. Quello che cambia negli altri livelli
 è come giocano — quanto leggono bene la palla, quanto mirano lontano da te,
 quanto in fretta rientrano — non solo quanto corrono.
 
-Ogni gioco ha la **sua classifica locale** (top 10, con livello raggiunto e
-nome del giocatore) e una progressione a livelli: si parte dal livello 1 e si
-sale finché non si perde. Il punteggio non si azzera fra i livelli, così la
+Ogni gioco ha la **sua classifica** (top 10, con livello raggiunto e nome del
+giocatore) e una progressione a livelli: si parte dal livello 1 e si sale
+finché non si perde. Il punteggio non si azzera fra i livelli, così la
 classifica misura davvero quanto lontano sei arrivato.
+
+## Classifica globale
+
+Le classifiche locali bastano a giocare, non a competere: ognuno vede le
+proprie. Se la classifica globale è configurata, accanto alla top 10 di questo
+browser compare quella di tutti — un nome per giocatore, la riga propria
+evidenziata in mezzo alle altre.
+
+Come funziona per chi gioca:
+
+- **il nome si prende.** Al primo avvio la suite lo chiede, prima della prima
+  partita: un risultato spedito senza nome resterebbe fuori classifica, e
+  sarebbe una partita buttata. I nomi sono unici — se è occupato lo dice e se ne
+  scrive un altro — e nessuno può firmare col nome di un altro;
+- **in classifica va il tuo meglio**, una riga per gioco. Una classifica in cui
+  uno occupa dieci posizioni su dieci non mette in competizione nessuno;
+- **senza rete si gioca uguale.** Il risultato locale è salvato prima di
+  qualunque chiamata, quello per la globale resta in coda e parte da solo
+  quando la rete torna. Il pannello distingue i tre casi — carico, non si
+  raggiunge, eccola — perché un elenco vuoto direbbe con la stessa faccia «non
+  ha ancora giocato nessuno» e «la rete non va».
+
+Sotto c'è Firebase (Realtime Database via REST, utente anonimo, regole che
+impediscono di scrivere la riga di un altro). Si accende incollando due valori
+nel `<meta name="classifica">` di `index.html`; finché sono vuoti la suite si
+comporta come sempre, senza una chiamata di rete. Le istruzioni, le regole da
+incollare e i costi stanno in
+[docs/CLASSIFICA_GLOBALE.md](docs/CLASSIFICA_GLOBALE.md).
+
+Una cosa va detta e sta scritta anche lì: **i punti li calcola il browser,
+quindi si possono falsificare.** Le regole del database controllano la forma e
+un tetto plausibile, non l'onestà; per quella servirebbe far girare i giochi su
+un server. Fra amici il rimedio è cancellare la riga, non riscrivere
+l'architettura.
 
 **Si riprende sempre da dove sei arrivato.** Il livello più alto raggiunto in un
 gioco resta segnato 🚩: dalla partita successiva puoi scegliere se ricominciare
@@ -252,10 +286,12 @@ mantenendo le proporzioni del gioco, quindi su schermi alti o bassi cambia la
 dimensione, non l'inquadratura.
 
 I dati (classifiche, nome giocatore, audio on/off) stanno in `localStorage`:
-restano sul dispositivo, non vanno da nessuna parte. Se lo storage non è
-disponibile (navigazione privata) i giochi funzionano lo stesso, le classifiche
-durano solo per la sessione. Il pulsante 👤 cambia il nome, «Azzera» sotto la
-classifica cancella i risultati di quel gioco.
+restano sul dispositivo. Se lo storage non è disponibile (navigazione privata) i
+giochi funzionano lo stesso, le classifiche durano solo per la sessione. Il
+pulsante 👤 apre il pannello del nome, «Azzera» sotto la classifica cancella i
+risultati locali di quel gioco. L'unica cosa che esce dal dispositivo è il
+punteggio spedito alla classifica globale, quando è configurata — e solo nome,
+punti, livello e data.
 
 ## Struttura
 
@@ -268,6 +304,7 @@ assets/js/core/
   storage.js                localStorage con fallback in memoria
   sfx.js                    effetti sonori sintetizzati (WebAudio) e il motore dell'auto
   profile.js                nome del giocatore
+  nuvola.js                 classifica globale su Firebase (REST, utente anonimo)
   scores.js                 classifiche e statistiche per gioco
   registry.js               registro dei giochi + contratto
   input.js                  tastiera, swipe, puntatore, pad, leva, volante e pedali
@@ -277,13 +314,16 @@ assets/js/core/
 assets/js/games/            un file per gioco
 assets/js/mappe/            mappe generate (dati, non si scrivono a mano)
 tools/mappa.js              costruisce la mappa di Codiverno (da OSM o ricostruita)
+dati/regole-firebase.json   regole del database della classifica globale
 docs/AGGIUNGERE_UN_GIOCO.md come aggiungerne uno
+docs/CLASSIFICA_GLOBALE.md  come accendere la classifica globale
 test/sandbox.js             esecuzione dei giochi fuori dal browser
 test/smoke.js               test di fumo con Playwright
 test/balance.js             banco di prova della difficoltà
 test/regole.js              meccaniche difficili da raggiungere nel browser
 test/orda-bot.js            pilota simulato di Orda (naviga il dungeon)
 test/pizze-bot.js           pilota simulato di Pizze (segue la rotta, accosta)
+test/finto-firebase.js      Firebase finto con le regole vere dentro
 ```
 
 La divisione è netta: il motore gestisce canvas, ciclo, pausa, livelli,
@@ -333,6 +373,22 @@ fermi e anche per le pizze in attesa sul bancone, che restando fermi il turno si
 perda, che passare sotto casa a tutta velocità non valga una consegna — e che
 seguendo il navigatore il turno si chiuda davvero, primo e ottavo, perché è
 esattamente ciò che il budget di calore promette.
+
+Della classifica globale `regole.js` prova la catena intera contro
+`test/finto-firebase.js`, un Firebase finto che applica **le stesse regole** del
+database vero: che senza configurazione tutto resti locale e funzionante, che un
+nome preso non si possa prendere due volte, che non si firmi col nome di un
+altro, che in classifica resti una riga per giocatore e sia la migliore, che un
+risultato fatto senza rete aspetti in coda (solo il migliore) e parta da solo
+quando la rete torna, che la lettura arrivi ordinata e tagliata a dieci. Un
+finto permissivo direbbe soltanto che il client sa fare una PUT; con le regole
+dentro, invece, fallisce se client e server non calcolano il nome allo stesso
+modo — che è il difetto tipico di questa integrazione, e si manifesta come
+«accettato a schermo, rifiutato dal server» per chiunque abbia uno spazio o un
+accento nel nome. Nel browser, `smoke.js` ripete il giro con lo stesso finto
+iniettato in pagina: il pannello che chiede il nome prima di giocare, il nome
+occupato da correggere, il punteggio spedito a fine partita, la propria riga
+evidenziata fra le altre e i tre stati della parte in rete.
 
 Il primo profilo, «fermo», non tocca niente: serve a verificare che stare fermi
 faccia perdere. Un gioco che si vince senza giocare è rotto quanto uno

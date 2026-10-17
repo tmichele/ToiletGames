@@ -761,6 +761,164 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   check('classifiche sopravvivono al reload', (await page.textContent('#game-grid')).includes('record'));
   check('statistiche home', (await page.textContent('#home-stats')).includes('partite giocate'));
 
+  /* ---- classifica globale, con un Firebase finto in pagina ---- */
+  /* Quello che serve provare nel browser è la catena intera: il pannello che
+     chiede il nome prima di giocare, il nome occupato che si può correggere, il
+     punteggio che parte alla fine della partita e la riga propria evidenziata
+     fra le altre. Il database vero non serve — servirebbero un progetto e una
+     classifica pubblica sporcata a ogni esecuzione — e il finto applica le
+     stesse regole, quindi quello che passa qui passa anche là. */
+  console.log('\n[classifica globale: spenta]');
+  await page.click('.card:has-text("Serpente")');
+  await page.click('.btn:has-text("Gioca")');
+  await sleep(200);
+  await page.click('#btn-board');
+  await sleep(250);
+  check('con la nuvola spenta la classifica globale non compare',
+    !(await page.isVisible('#board-globale')) && (await page.textContent('#board-stato')).includes('non attiva'),
+    (await page.textContent('#board-stato')).trim().slice(0, 70));
+  check('e quella locale resta al suo posto', await page.isVisible('#board'));
+  await page.click('#modal-close');
+  await page.click('#btn-back');
+  await sleep(200);
+
+  console.log('\n[classifica globale: accesa]');
+  const pagina2 = await browser.newPage({ viewport: { width: 420, height: 900 } });
+  pagina2.on('pageerror', e => errors.push('pageerror(nuvola): ' + e.message));
+  pagina2.on('console', m => { if (m.type() === 'error') errors.push('nuvola: ' + m.text()); });
+
+  const fintoSrc = require('fs').readFileSync(path.join(__dirname, 'finto-firebase.js'), 'utf8');
+  await pagina2.addInitScript(fintoSrc + `
+    window.__finto = creaFintoFirebase({ url: 'https://finto-db.test' });
+    /* Un nome già occupato da un altro giocatore: è il caso che il pannello
+       deve saper raccontare, e nel database vero capiterà a chiunque scelga
+       un nome comune. */
+    window.__finto.dati.nomi['teo'] = 'quello-prima';
+    window.__finto.dati.punteggi.zzztest = {
+      'quello-prima': { nome: 'Teo', punti: 9000, livello: 9, da: 1, quando: 1, v: 1 }
+    };
+    window.fetch = window.__finto.fetch;
+    window.TG_CLASSIFICA = { url: 'https://finto-db.test', chiave: 'chiave-finta' };
+  `);
+  await pagina2.goto(URL);
+  await sleep(400);
+
+  check('appena aperta chiede il nome', await pagina2.isVisible('#modal-nome'),
+    await pagina2.textContent('#modal-title'));
+  check('e spiega che i nomi sono unici',
+    (await pagina2.textContent('#nome-intro')).includes('unici'),
+    await pagina2.textContent('#nome-intro'));
+
+  await pagina2.fill('#input-nome', 'Teo');
+  await pagina2.click('#btn-nome-ok');
+  await sleep(400);
+  check('un nome già preso viene rifiutato, spiegando perché',
+    (await pagina2.textContent('#nome-stato')).includes('già'),
+    (await pagina2.textContent('#nome-stato')).trim().slice(0, 70));
+  check('e il pannello resta aperto per correggere', await pagina2.isVisible('#modal-nome'));
+
+  await pagina2.fill('#input-nome', 'Michele');
+  await pagina2.click('#btn-nome-ok');
+  await sleep(400);
+  check('un nome libero viene preso', !(await pagina2.isVisible('#modal')),
+    (await pagina2.textContent('#nome-stato')).trim().slice(0, 70));
+  check('e il nome compare in home',
+    (await pagina2.textContent('#home-stats')).includes('Michele'),
+    (await pagina2.textContent('#home-stats')).replace(/\s+/g, ' ').slice(-90));
+  check('il nome preso è finito nel database',
+    await pagina2.evaluate(() => window.__finto.dati.nomi['michele'] ? true : false));
+
+  // un gioco finto per chiudere una partita a comando, come nel blocco [motore]
+  await pagina2.evaluate(() => {
+    window.__cmd = null;
+    TG.registry.register({
+      id: 'zzztest', title: 'Test', icon: '🧪', tagline: 'gioco di prova',
+      controls: 'none', viewport: { w: 200, h: 200 },
+      create: function (api) {
+        return {
+          start: function () {},
+          update: function () {
+            if (window.__cmd === 'lose') {
+              window.__cmd = null;
+              api.addScore(window.__punti || 250);
+              api.gameOver({ message: 'fine prova' });
+            }
+          },
+          draw: function (ctx) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 200, 200); }
+        };
+      }
+    });
+    location.hash = '#/g/zzztest';
+  });
+  await sleep(300);
+  await pagina2.click('.btn:has-text("Gioca")');
+  await sleep(200);
+  await pagina2.evaluate(() => { window.__cmd = 'lose'; });
+  await sleep(600);
+  check('la fine della partita dice che il risultato è partito',
+    (await pagina2.textContent('#overlay-body')).includes('verso la classifica globale'),
+    (await pagina2.textContent('#overlay-body')).replace(/\s+/g, ' ').slice(0, 120));
+  const riga = await pagina2.evaluate(() => {
+    const p = window.__finto.dati.punteggi.zzztest;
+    const k = Object.keys(p).filter((x) => x !== 'quello-prima')[0];
+    return k ? p[k] : null;
+  });
+  check('e nel database c\'è la riga col nome preso',
+    !!riga && riga.nome === 'Michele' && riga.punti === 250, JSON.stringify(riga));
+
+  await pagina2.click('#btn-board');
+  await sleep(500);
+  const globale = await pagina2.evaluate(() => ({
+    visibile: !document.getElementById('board-globale').hidden,
+    righe: [...document.querySelectorAll('#board-globale li')].map((li) => li.textContent.replace(/\s+/g, ' ')),
+    mie: [...document.querySelectorAll('#board-globale li.is-io')].map((li) => li.textContent.replace(/\s+/g, ' ')),
+    stato: document.getElementById('board-stato').textContent
+  }));
+  check('la classifica globale si vede, con gli altri giocatori dentro',
+    globale.visibile && globale.righe.length === 2, JSON.stringify(globale.righe));
+  check('ordinata: davanti chi ha più punti',
+    /9000/.test(globale.righe[0] || ''), globale.righe[0]);
+  check('e la propria riga è evidenziata', globale.mie.length === 1 && /Michele/.test(globale.mie[0]),
+    JSON.stringify(globale.mie));
+  check('lo stato dice con che nome si è in gara', globale.stato.includes('Michele'),
+    globale.stato.trim().slice(0, 70));
+
+  /* Rete giù: la partita deve finire normalmente, il risultato restare in coda
+     e la classifica dire che non si raggiunge — non un elenco vuoto, che
+     sembrerebbe «non ha giocato nessuno». */
+  await pagina2.click('#modal-close');
+  await pagina2.evaluate(() => { window.__finto.guasto(true); window.__punti = 900; });
+  await pagina2.click('.btn:has-text("Rigioca")').catch(() => {});
+  await sleep(200);
+  await pagina2.evaluate(() => { window.__cmd = 'lose'; });
+  await sleep(600);
+  const dopoGuasto = await pagina2.evaluate(() => ({
+    stato: TG.engine.getState(), coda: TG.nuvola.inAttesa(), punti: TG.scores.best('zzztest')
+  }));
+  check('con la rete giù la partita si chiude comunque e resta in locale',
+    dopoGuasto.punti === 900 && dopoGuasto.stato === 'over', JSON.stringify(dopoGuasto));
+  check('e il risultato aspetta in coda invece di andare perso',
+    dopoGuasto.coda === 1, dopoGuasto.coda + ' in coda');
+  await pagina2.click('#btn-board');
+  await sleep(500);
+  check('e la classifica globale dice che non si raggiunge',
+    (await pagina2.textContent('#board-stato')).includes('non raggiungibile'),
+    (await pagina2.textContent('#board-stato')).trim().slice(0, 80));
+
+  /* Tornata la rete, la coda si svuota da sola: senza questo passaggio il
+     risultato fatto in galleria resterebbe lì a meno di giocarne un altro. */
+  await pagina2.evaluate(() => { window.__finto.guasto(false); TG.nuvola.sincronizza(); });
+  await sleep(600);
+  const recuperato = await pagina2.evaluate(() => {
+    const p = window.__finto.dati.punteggi.zzztest;
+    const k = Object.keys(p).filter((x) => x !== 'quello-prima')[0];
+    return { riga: k ? p[k] : null, coda: TG.nuvola.inAttesa() };
+  });
+  check('tornata la rete il risultato in coda parte da solo',
+    !!recuperato.riga && recuperato.riga.punti === 900 && recuperato.coda === 0,
+    JSON.stringify(recuperato));
+  await pagina2.close();
+
   console.log('\n[console]');
   check('nessun errore JS', errors.length === 0, errors.join(' | ').slice(0, 300));
 

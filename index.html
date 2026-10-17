@@ -12,9 +12,16 @@
      può mai girare con uno script vecchio rimasto nella cache del browser —
      è successo: il gioco nuovo c'era e i suoi comandi no, perché input.js
      era quello di prima. -->
-<meta name="versione" content="9" data-data="2026-09-09">
+<meta name="versione" content="10" data-data="2026-10-17">
+<!-- Classifica globale (Firebase Realtime Database). Vuoto = spenta: la suite
+     funziona come sempre con le sole classifiche locali. Per accenderla:
+     content = indirizzo del database, data-chiave = chiave web del progetto.
+     Non sono segreti — la chiave web di Firebase sta in chiaro in qualunque
+     app Firebase — quello che protegge i dati sono le regole del database, in
+     dati/regole-firebase.json. Istruzioni: docs/CLASSIFICA_GLOBALE.md -->
+<meta name="classifica" content="" data-chiave="">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚽</text></svg>">
-<link rel="stylesheet" href="assets/css/style.css?v=9">
+<link rel="stylesheet" href="assets/css/style.css?v=10">
 </head>
 <body>
 
@@ -69,8 +76,25 @@
     </div>
     <div class="modal__body">
       <section id="modal-board">
+        <h3 class="board__tit" id="board-tit-globale">🌍 Globale</h3>
+        <p class="board__stato" id="board-stato"></p>
+        <ol class="board" id="board-globale"></ol>
+        <h3 class="board__tit" id="board-tit-locale">📱 Su questo browser</h3>
         <ol class="board" id="board"></ol>
-        <button class="link-btn" id="btn-clear-board">Azzera la classifica</button>
+        <button class="link-btn" id="btn-clear-board">Azzera la classifica locale</button>
+      </section>
+      <!-- Il nome si «prende»: in classifica globale non possono esserci due
+           giocatori con lo stesso nome, e nessuno deve poter firmare col nome
+           di un altro. Chi dice sì lo tiene su questo browser. -->
+      <section id="modal-nome" hidden>
+        <p class="hint" id="nome-intro"></p>
+        <form id="form-nome" class="form-nome" autocomplete="off">
+          <input id="input-nome" class="form-nome__input" type="text" maxlength="14"
+                 placeholder="il tuo nome" aria-label="Nome giocatore"
+                 autocapitalize="off" autocorrect="off" spellcheck="false">
+          <button class="btn" id="btn-nome-ok" type="submit">Prendi questo nome</button>
+        </form>
+        <p class="board__stato" id="nome-stato" role="status"></p>
       </section>
       <section id="modal-help" hidden>
         <p class="hint" id="game-howto"></p>
@@ -91,7 +115,7 @@
   var v = document.querySelector('meta[name="versione"]').getAttribute('content');
   [
     'core/version', 'core/util', 'core/storage', 'core/sfx', 'core/profile',
-    'core/scores', 'core/registry', 'core/input', 'core/engine', 'core/ui',
+    'core/nuvola', 'core/scores', 'core/registry', 'core/input', 'core/engine', 'core/ui',
     'games/serpente', 'games/pong', 'games/memoria', 'games/mattoni', 'games/hockey',
     'games/talpe', 'games/forza4', 'games/tessere', 'games/labirinto', 'games/orda',
     'mappe/codiverno', 'games/pizze',

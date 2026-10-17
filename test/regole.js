@@ -7,7 +7,10 @@
 
    Uso:  node test/regole.js */
 
-const { loadGames, makeGame } = require('./sandbox');
+const fs = require('fs');
+const path = require('path');
+const { loadGames, loadCore, makeGame, ROOT } = require('./sandbox');
+const { creaFintoFirebase } = require('./finto-firebase');
 
 const DT = 1 / 60;
 let failures = 0;
@@ -1281,5 +1284,218 @@ console.log('\n[ripartenza: partenza da livello alto]');
   check('e naturalmente anche dal livello 1', daUno.length === 0, daUno.join(' | '));
 }
 
-console.log(failures === 0 ? '\nTUTTO OK' : '\n' + failures + ' CONTROLLI FALLITI');
-process.exit(failures === 0 ? 0 : 1);
+/* ---------- classifica globale (Firebase finto, regole vere) ---------- */
+
+/* Questa parte non si può provare nel browser: vorrebbe dire un progetto
+   Firebase vero per ogni esecuzione dei test, e scrivere in una classifica
+   pubblica a ogni `node test/regole.js`. Gira invece contro il Firebase finto
+   di test/finto-firebase.js, che applica le stesse regole del database — ed è
+   lì il valore: fa fallire un client che calcola lo slug del nome in modo
+   diverso da come lo ricalcolano le regole, che è il difetto classico di
+   questo tipo di integrazione. */
+
+function attendi(ms) { return new Promise((r) => setTimeout(r, ms || 20)); }
+function chiama(f, ...args) {
+  return new Promise((r) => f(...args, (err, val) => r({ err, val })));
+}
+
+/* Un «browser» nuovo: storage proprio, utente anonimo proprio, lo stesso
+   database finto. È così che si prova che due persone non possono prendere lo
+   stesso nome. */
+function browser(finto, versione) {
+  return loadCore({
+    fetch: finto.fetch,
+    classifica: { url: finto.url, chiave: finto.chiave },
+    versione: versione || 10
+  }).TG;
+}
+
+async function provaClassificaGlobale() {
+  console.log('\n[classifica globale: spenta]');
+  {
+    const TG = loadCore({}).TG;                   // nessuna configurazione
+    check('senza configurazione la classifica globale è spenta', TG.nuvola.attiva() === false);
+    const res = TG.scores.submit('serpente', 120, 3, 1);
+    check('e la classifica locale funziona come sempre',
+      res.rank === 1 && TG.scores.top('serpente').length === 1 && res.nuvola === 'spenta',
+      JSON.stringify({ rank: res.rank, nuvola: res.nuvola }));
+    const nome = TG.profile.setName('Niccolò!!');
+    check('il nome resta usabile anche senza nuvola', nome === 'Niccolo', nome);
+  }
+
+  console.log('\n[classifica globale: il nome si prende]');
+  {
+    const finto = creaFintoFirebase({});
+    const uno = browser(finto);
+    const r1 = await chiama(uno.nuvola.prendiNome, 'Teo');
+    check('il primo prende il nome', !r1.err && r1.val === 'Teo', (r1.err && r1.err.message) || r1.val);
+    check('e resta scritto su questo browser', uno.nuvola.nome() === 'Teo', uno.nuvola.nome());
+
+    const due = browser(finto);
+    const r2 = await chiama(due.nuvola.prendiNome, 'teo');
+    check('un altro giocatore non può prendere lo stesso nome',
+      !!r2.err && r2.err.preso === true, (r2.err && r2.err.message) || 'nessun errore');
+    const r3 = await chiama(due.nuvola.prendiNome, 'Teo 2');
+    check('ma uno libero sì', !r3.err && r3.val === 'Teo 2', (r3.err && r3.err.message) || r3.val);
+
+    /* Lo slug del client e quello delle regole devono coincidere a una
+       lettera: se non coincidono il server rifiuta il punteggio di chiunque
+       abbia un nome con uno spazio o un accento, dopo averlo accettato a
+       schermo. */
+    const tre = browser(finto);
+    const r4 = await chiama(tre.nuvola.prendiNome, 'Niccolò Rossi');
+    check('accenti e spazi passano la pulizia', !r4.err && r4.val === 'Niccolo Rossi',
+      (r4.err && r4.err.message) || r4.val);
+    tre.nuvola.invia('serpente', { punti: 90, livello: 2, da: 1 });
+    await attendi(30);
+    const righe = finto.dati.punteggi.serpente || {};
+    const scritta = Object.keys(righe).map((k) => righe[k]).filter((r) => r.nome === 'Niccolo Rossi');
+    check('e il punteggio di un nome con lo spazio viene accettato dalle regole',
+      scritta.length === 1 && scritta[0].punti === 90, JSON.stringify(righe));
+
+    const r5 = await chiama(uno.nuvola.prendiNome, 'Giocatore');
+    check('il nome di default non si può prendere', !!r5.err, (r5.err && r5.err.message) || 'accettato');
+  }
+
+  console.log('\n[classifica globale: cosa ci finisce]');
+  {
+    const finto = creaFintoFirebase({});
+    const TG = browser(finto);
+    check('senza nome non si invia niente', TG.nuvola.invia('pong', { punti: 50, livello: 1 }) === 'senza-nome');
+    await chiama(TG.nuvola.prendiNome, 'Teo');
+
+    TG.nuvola.invia('pong', { punti: 100, livello: 2, da: 1 });
+    await attendi(30);
+    check('il primo risultato va in classifica',
+      (finto.dati.punteggi.pong || {}).uid1.punti === 100, JSON.stringify(finto.dati.punteggi.pong));
+
+    check('un risultato peggiore non si invia nemmeno',
+      TG.nuvola.invia('pong', { punti: 60, livello: 1, da: 1 }) === 'non-record');
+    TG.nuvola.invia('pong', { punti: 300, livello: 5, da: 1 });
+    await attendi(30);
+    const righe = finto.dati.punteggi.pong;
+    check('uno migliore sostituisce il proprio',
+      Object.keys(righe).length === 1 && righe.uid1.punti === 300 && righe.uid1.livello === 5,
+      JSON.stringify(righe));
+    check('una riga per giocatore, non una per partita', Object.keys(righe).length === 1);
+    check('un punteggio assurdo non parte', TG.nuvola.invia('pong', { punti: 99999999, livello: 2 }) === 'assurdo');
+  }
+
+  console.log('\n[classifica globale: la rete che non c\'è]');
+  {
+    const finto = creaFintoFirebase({});
+    const TG = browser(finto);
+    await chiama(TG.nuvola.prendiNome, 'Teo');
+
+    finto.guasto(true);
+    TG.nuvola.invia('talpe', { punti: 100, livello: 2, da: 1 });
+    await attendi(30);
+    TG.nuvola.invia('talpe', { punti: 400, livello: 4, da: 1 });
+    TG.nuvola.invia('talpe', { punti: 250, livello: 3, da: 1 });
+    await attendi(30);
+    check('con la rete giù il risultato resta in coda', TG.nuvola.inAttesa() === 1, TG.nuvola.inAttesa() + ' in coda');
+    check('e in coda ci sta solo il migliore', !finto.dati.punteggi.talpe);
+
+    finto.guasto(false);
+    const r = await chiama(TG.nuvola.sincronizza);
+    await attendi(30);
+    check('tornata la rete il risultato parte da solo',
+      !r.err && (finto.dati.punteggi.talpe || {}).uid1.punti === 400,
+      JSON.stringify(finto.dati.punteggi.talpe || {}));
+    check('e la coda si svuota', TG.nuvola.inAttesa() === 0, TG.nuvola.inAttesa() + ' in coda');
+
+    /* Una partita finita senza rete deve comunque essere registrata in locale:
+       la classifica globale è un extra, non una condizione per giocare. */
+    finto.guasto(true);
+    const res = TG.scores.submit('talpe', 500, 5, 1);
+    check('la partita si registra in locale anche con la rete giù',
+      res.rank === 1 && res.nuvola === 'in-corso', JSON.stringify({ rank: res.rank, nuvola: res.nuvola }));
+    finto.guasto(false);
+  }
+
+  console.log('\n[classifica globale: la lettura]');
+  {
+    const finto = creaFintoFirebase({});
+    const TG = browser(finto);
+    await chiama(TG.nuvola.prendiNome, 'Teo');
+    // dodici avversari già in classifica, con punteggi mescolati
+    finto.dati.punteggi.hockey = {};
+    for (let i = 1; i <= 12; i++) {
+      finto.dati.nomi['gente-' + i] = 'altro' + i;
+      finto.dati.punteggi.hockey['altro' + i] = {
+        nome: 'gente ' + i, punti: (i * 37) % 500, livello: 1 + (i % 9), da: 1, quando: 1000 + i, v: 10
+      };
+    }
+    TG.nuvola.invia('hockey', { punti: 260, livello: 6, da: 1 });
+    await attendi(30);
+
+    const r = await chiama(TG.nuvola.top, 'hockey');
+    const righe = r.val || [];
+    check('la classifica arriva senza errori', !r.err, r.err && r.err.message);
+    check('sono dieci righe, non tutte', righe.length === 10, righe.length + ' righe su 13');
+    const ordinate = righe.every((x, i) => i === 0 || righe[i - 1].punti >= x.punti);
+    check('ordinate dal punteggio più alto', ordinate, righe.map((x) => x.punti).join(' '));
+    const io = righe.filter((x) => x.io);
+    check('la propria riga è segnata', io.length === 1 && io[0].nome === 'Teo',
+      JSON.stringify(io.map((x) => x.nome)));
+    const tutti = Object.keys(finto.dati.punteggi.hockey).map((k) => finto.dati.punteggi.hockey[k].punti);
+    const soglia = tutti.sort((a, b) => b - a)[9];
+    check('e chi sta sotto la decima posizione resta fuori',
+      righe.every((x) => x.punti >= soglia), 'soglia ' + soglia);
+  }
+
+  console.log('\n[classifica globale: cambiare nome]');
+  {
+    const finto = creaFintoFirebase({});
+    const TG = browser(finto);
+    await chiama(TG.nuvola.prendiNome, 'Teo');
+    TG.nuvola.invia('tessere', { punti: 100, livello: 2, da: 1 });
+    await attendi(30);
+    const r = await chiama(TG.nuvola.prendiNome, 'Michele');
+    await attendi(40);
+    check('cambiando nome la riga già in classifica si aggiorna',
+      !r.err && (finto.dati.punteggi.tessere || {}).uid1.nome === 'Michele',
+      JSON.stringify(finto.dati.punteggi.tessere || {}));
+  }
+
+  console.log('\n[classifica globale: le regole del database]');
+  {
+    const testo = fs.readFileSync(path.join(ROOT, 'dati/regole-firebase.json'), 'utf8');
+    let regole = null;
+    try { regole = JSON.parse(testo).rules; } catch (e) { /* lo dice il check qui sotto */ }
+    check('il file delle regole è JSON valido', !!regole);
+    if (regole) {
+      check('la radice non è leggibile né scrivibile',
+        regole['.read'] === false && regole['.write'] === false);
+      const riga = regole.punteggi.$gioco.$uid;
+      check('nessuno può scrivere la riga di un altro',
+        riga['.write'].indexOf('auth.uid === $uid') >= 0 && riga['.write'].indexOf('auth != null') >= 0,
+        riga['.write']);
+      check('il punteggio non può scendere',
+        riga['.write'].indexOf("newData.child('punti').val() >= data.child('punti').val()") >= 0);
+      check('e non si firma col nome di un altro',
+        riga['.validate'].indexOf("root.child('nomi')") >= 0 && riga['.validate'].indexOf('auth.uid') >= 0,
+        riga['.validate']);
+      check('i campi estranei sono rifiutati',
+        riga.$altro['.validate'] === false || riga.$altro['.validate'] === 'false',
+        String(riga.$altro['.validate']));
+      check('la classifica è leggibile da tutti e indicizzata sui punti',
+        regole.punteggi.$gioco['.read'] === true && regole.punteggi.$gioco['.indexOn'] === 'punti');
+      check('i nomi presi non sono elencabili da fuori', regole.nomi.$slug['.read'] === false);
+      check('e un nome si prende solo se libero o già proprio',
+        regole.nomi.$slug['.write'].indexOf('!data.exists() || data.val() === auth.uid') >= 0,
+        regole.nomi.$slug['.write']);
+    }
+  }
+}
+
+/* I controlli della nuvola sono asincroni: il riepilogo aspetta anche loro,
+   altrimenti il processo uscirebbe «TUTTO OK» prima di averli fatti. */
+provaClassificaGlobale().then(function () {
+  console.log(failures === 0 ? '\nTUTTO OK' : '\n' + failures + ' CONTROLLI FALLITI');
+  process.exit(failures === 0 ? 0 : 1);
+}, function (e) {
+  console.log('  FAIL la prova della classifica globale è andata in errore — ' + e.message);
+  console.log('\n' + (failures + 1) + ' CONTROLLI FALLITI');
+  process.exit(1);
+});

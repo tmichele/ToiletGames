@@ -1,4 +1,11 @@
-# Mappe da OpenStreetMap
+# Dati
+
+Due cose diverse, entrambe dati e non codice: l'export di OpenStreetMap da cui
+si genera la mappa delle **Pizze**, e le regole del database della **classifica
+globale** (`regole-firebase.json`, da incollare nella console di Firebase —
+vedi [docs/CLASSIFICA_GLOBALE.md](../docs/CLASSIFICA_GLOBALE.md)).
+
+## Mappe da OpenStreetMap
 
 Qui dentro va l'export di OpenStreetMap del paese, e da qui
 `node tools/mappa.js` costruisce `assets/js/mappe/codiverno.js`, cioè la mappa

@@ -1,5 +1,11 @@
-/* Classifica locale per gioco (top 10) + statistiche di progresso.
-   Nessun server: tutto in localStorage. */
+/* Classifica per gioco (top 10 locale) + statistiche di progresso.
+
+   Il locale resta il padrone di casa: la top 10 di questo browser e i
+   progressi stanno in localStorage e non dipendono da niente. Se la classifica
+   globale è configurata (TG.nuvola), la fine di una partita viene anche
+   spedita lassù — ma l'invio è una conseguenza, non una condizione: qualunque
+   cosa faccia la rete, il risultato locale è già salvato quando submit()
+   ritorna. */
 TG.scores = (function () {
   'use strict';
 
@@ -78,7 +84,16 @@ TG.scores = (function () {
     for (var i = 0; i < list.length; i++) {
       if (list[i].id === entry.id) { rank = i + 1; break; }
     }
-    return { rank: rank, isRecord: isRecord, entry: entry };
+
+    /* In classifica globale ci va solo il proprio meglio, e solo da chi ha
+       preso un nome: invia() risponde con il motivo quando non parte
+       ('spenta', 'senza-nome', 'non-record'), così l'interfaccia può dirlo
+       invece di tacere. */
+    var nuvola = (TG.nuvola && TG.nuvola.attiva())
+      ? TG.nuvola.invia(gameId, { punti: score, livello: level, da: partenza })
+      : 'spenta';
+
+    return { rank: rank, isRecord: isRecord, entry: entry, nuvola: nuvola };
   }
 
   function clear(gameId) {

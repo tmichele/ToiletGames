@@ -23,6 +23,9 @@
     best: document.getElementById('hud-best'),
     scoreLabel: document.getElementById('hud-score-label'),
     board: document.getElementById('board'),
+    boardGlobale: document.getElementById('board-globale'),
+    boardStato: document.getElementById('board-stato'),
+    boardTitGlobale: document.getElementById('board-tit-globale'),
     clearBoard: document.getElementById('btn-clear-board'),
     boardBtn: document.getElementById('btn-board'),
     helpBtn: document.getElementById('btn-help'),
@@ -31,14 +34,23 @@
     modalBoard: document.getElementById('modal-board'),
     modalHelp: document.getElementById('modal-help'),
     modalClose: document.getElementById('modal-close'),
+    modalNome: document.getElementById('modal-nome'),
+    nomeIntro: document.getElementById('nome-intro'),
+    formNome: document.getElementById('form-nome'),
+    inputNome: document.getElementById('input-nome'),
+    nomeOk: document.getElementById('btn-nome-ok'),
+    nomeStato: document.getElementById('nome-stato'),
     touchControls: document.getElementById('touch-controls'),
     howto: document.getElementById('game-howto'),
     version: document.getElementById('app-version')
   };
 
   var current = null;        // gioco aperto
+  var dopoNome = null;       // cosa si stava facendo quando è servito il nome
 
   TG.ui.init(el);
+  // la coda dei risultati non spediti riparte da sola, se c'è qualcosa in coda
+  TG.nuvola.avvio();
   TG.input.init({ stage: el.stage, canvas: el.canvas, controls: el.touchControls });
   TG.engine.init({ stage: el.stage, canvas: el.canvas });
 
@@ -75,8 +87,52 @@
     return info ? '\n' + info : '';
   }
 
+  /* ---------- il nome del giocatore ---------- */
+
+  /* Con la classifica globale accesa il nome non è un vezzo: è la firma sotto
+     i punteggi, e deve essere unico. Si chiede prima della prima partita —
+     non dopo, perché un risultato arrivato senza nome resterebbe fuori
+     classifica e sarebbe già una partita buttata. */
+  function serveNome() {
+    return TG.nuvola.attiva() && !TG.nuvola.nome();
+  }
+
+  function apriNome(messaggio, poi) {
+    dopoNome = poi || null;
+    if (TG.engine.getState() === 'running') TG.engine.pause();
+    TG.ui.renderNome(messaggio || '');
+    TG.ui.nomeInAttesa(false);
+    TG.ui.showModal('nome');
+  }
+
+  function confermaNome() {
+    var scritto = TG.ui.nomeInserito();
+    TG.ui.nomeInAttesa(true);
+    TG.ui.renderNome('Prendo il nome…');
+    TG.nuvola.prendiNome(scritto, function (err, nome) {
+      TG.ui.nomeInAttesa(false);
+      if (err) {
+        // il nome occupato non è un guasto: si riscrive e si riprova
+        TG.ui.renderNome(err.message, err.preso ? 'is-warn' : 'is-err');
+        if (el.inputNome) { el.inputNome.value = scritto; el.inputNome.focus(); }
+        return;
+      }
+      TG.ui.hideModal();
+      TG.ui.renderHomeStats();
+      if (current) TG.ui.renderBoard(current.id);
+      var poi = dopoNome;
+      dopoNome = null;
+      if (poi) poi(nome);
+    });
+  }
+
   /* Avvia la partita dal livello indicato: 1, oppure quello a cui eri arrivato. */
   function avvia(livello) {
+    if (serveNome()) {
+      apriNome('Prima di giocare: in classifica globale serve un nome tuo.',
+        function () { avvia(livello); });
+      return;
+    }
     TG.sfx.unlock();
     TG.ui.hideOverlay();
     if (TG.engine.getStartLevel() !== livello || TG.engine.getState() !== 'ready') {
@@ -165,12 +221,25 @@
     TG.ui.setBest(TG.scores.best(current.id));
     TG.ui.renderBoard(current.id, res.entry.id);
 
+    /* Che fine ha fatto il risultato in classifica globale si dice qui, in una
+       riga: «inviato» quando parte, e il motivo quando non parte. Un invio che
+       fallisce in silenzio farebbe sospettare la classifica, non la rete. */
+    var globale = '';
+    /* «In viaggio» e non «spedito»: l'invio è appena partito e la risposta
+       arriverà dopo questo pannello. Se la rete non c'è, il risultato resta in
+       coda e parte da solo — in viaggio è vero in entrambi i casi, spedito
+       no. */
+    if (res.nuvola === 'in-corso') globale = '\n🌍 Risultato in viaggio verso la classifica globale.';
+    else if (res.nuvola === 'senza-nome') globale = '\n🌍 Per la classifica globale ti serve un nome (pulsante 👤).';
+    else if (res.nuvola === 'non-record') globale = '\n🌍 In classifica globale resta il tuo record, che è più alto.';
+
     var body =
       (message ? message + '\n' : '') +
       'Punteggio: <b>' + score + '</b> · livello <b>' + level + '</b>' +
       (partenza > 1 ? ' (partito dal ' + partenza + ')' : '') + '\n' +
       (res.isRecord ? '🏆 Nuovo record personale!' :
-        (res.rank ? 'Sei ' + res.rank + '° in classifica.' : 'Niente classifica stavolta.'));
+        (res.rank ? 'Sei ' + res.rank + '° in classifica.' : 'Niente classifica stavolta.')) +
+      globale;
 
     var azioni = [
       {
@@ -206,7 +275,10 @@
      pannello a metà partita. */
   function apriPannello(quale) {
     if (TG.engine.getState() === 'running') TG.engine.pause();
-    if (quale === 'classifica' && current) TG.ui.renderBoard(current.id);
+    if (quale === 'classifica' && current) {
+      TG.ui.renderBoard(current.id);
+      TG.ui.renderBoardGlobale(current.id);
+    }
     TG.ui.showModal(quale);
   }
 
@@ -231,11 +303,14 @@
     TG.ui.setBest(0);
   });
 
-  el.profileBtn.addEventListener('click', function () {
-    var name = window.prompt('Come ti chiami? (max 14 caratteri)', TG.profile.getName());
-    if (name === null) return;
-    TG.profile.setName(name);
-    TG.ui.renderHomeStats();
+  /* Il nome si cambia in un pannello, non più con window.prompt: prendere un
+     nome in classifica globale può rispondere «è già di un altro», e una
+     finestrella del browser non ha un posto dove scriverlo. */
+  el.profileBtn.addEventListener('click', function () { apriNome(''); });
+
+  el.formNome.addEventListener('submit', function (e) {
+    e.preventDefault();
+    confermaNome();
   });
 
   function paintSoundBtn() {
@@ -263,4 +338,8 @@
 
   paintSoundBtn();
   fromHash();
+
+  /* Appena aperta la pagina: se la classifica globale c'è e il nome no, si
+     chiede subito. È l'unico momento in cui non interrompe niente. */
+  if (serveNome()) apriNome('Benvenuto: scegli il nome con cui comparire in classifica.');
 })();
