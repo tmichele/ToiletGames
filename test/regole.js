@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const { loadGames, loadCore, makeGame, ROOT } = require('./sandbox');
 const { creaFintoFirebase } = require('./finto-firebase');
+const { creaPilota: creaPilotaCane } = require('./cane-bot');
 
 const DT = 1 / 60;
 let failures = 0;
@@ -1282,6 +1283,501 @@ console.log('\n[ripartenza: partenza da livello alto]');
     }
   });
   check('e naturalmente anche dal livello 1', daUno.length === 0, daUno.join(' | '));
+}
+
+/* ---------- Gregge: il pascolo e il mestiere del cane ---------- */
+
+/* Le pecore non si comandano, si spingono: tutto quello che il gioco promette
+   è una conseguenza di quel modello, quindi va verificato che le conseguenze
+   ci siano davvero — che il gregge si tenga insieme, che spingendoci in mezzo
+   si spacchi, che il dirupo sia un muro per il cane e un pericolo per loro.
+   Nel browser niente di questo si raggiungerebbe: servirebbero partite
+   intere condotte col joystick. */
+
+/* Un punto di prato libero: niente alberi, dirupi, staccionate o recinto entro
+   il raggio chiesto. Le prime versioni di queste prove mettevano la pecora al
+   centro del pascolo e via, e qualche volta il centro del pascolo era dentro a
+   un pino: la pecora non poteva muoversi e il test dichiarava che non scappava
+   dal cane. Una prova che dipende da dove è caduto un albero non misura il
+   gioco, misura il seme. */
+function pratoLibero(s, raggio) {
+  let migliore = null, miglioreSpazio = -1;
+  for (let j = 0; j < 14; j++) {
+    for (let i = 0; i < 14; i++) {
+      const x = 12 + (s.mondo.w - 24) * i / 13;
+      const y = 12 + (s.mondo.h - 24) * j / 13;
+      let spazio = Math.min(x, y, s.mondo.w - x, s.mondo.h - y);
+      s.alberi.forEach((a) => { spazio = Math.min(spazio, Math.hypot(x - a.x, y - a.y) - a.r); });
+      const rett = s.dirupi.concat(s.muri, [s.recinto]);
+      rett.forEach((r) => {
+        const cx = Math.max(r.x, Math.min(x, r.x + r.w));
+        const cy = Math.max(r.y, Math.min(y, r.y + r.h));
+        spazio = Math.min(spazio, Math.hypot(x - cx, y - cy));
+      });
+      if (spazio > miglioreSpazio) { miglioreSpazio = spazio; migliore = { x: x, y: y }; }
+      if (miglioreSpazio >= raggio) return migliore;
+    }
+  }
+  return migliore;
+}
+
+/* Ferma la brucatura: al pascolo le pecore fanno due passi a caso, e su
+   finestre brevi quel rumore vale quanto il segnale che si vuole misurare. */
+function nonBrucare(s) {
+  s.pecore.forEach((p) => { p.pascolo = 999; p.meta = null; });
+}
+
+/* Parcheggia le pecore che non interessano nell'angolo più lontano dal
+   recinto. Serve perché queste prove isolano una pecora alla volta, e le altre
+   devono stare fuori dai piedi — ma «fuori dai piedi» non è un punto fisso: in
+   un pascolo col recinto nell'angolo in alto a sinistra, le pecore parcheggiate
+   a 14,14 finivano dentro al recinto e venivano contate. Il test misurava
+   allora una cosa che non aveva chiesto. */
+function parcheggia(s, tranne) {
+  const lontano = {
+    x: s.recinto.x + s.recinto.w / 2 < s.mondo.w / 2 ? s.mondo.w - 14 : 14,
+    y: s.recinto.y + s.recinto.h / 2 < s.mondo.h / 2 ? s.mondo.h - 14 : 14
+  };
+  let n = 0;
+  s.pecore.forEach((q) => {
+    if (q === tranne) return;
+    q.x = lontano.x + (n % 3) * 4 * (lontano.x > s.mondo.w / 2 ? -1 : 1);
+    q.y = lontano.y + Math.floor(n / 3) * 4 * (lontano.y > s.mondo.h / 2 ? -1 : 1);
+    q.vx = 0; q.vy = 0;
+    n++;
+  });
+}
+
+console.log('\n[gregge: il pascolo generato]');
+{
+  const def = defs.gregge;
+
+  /* Percorribilità, controllata da fuori e per ogni pecora: dal punto dove
+     nasce ognuna deve esistere una strada fino al recinto, larga abbastanza
+     per una pecora. Il gioco ha un suo controllo e rigenera i pascoli che non
+     lo passano; questo è un secondo parere scritto in modo diverso (griglia
+     più fitta, partenza da ogni pecora e non dal centro del gruppo), perché
+     due copie dello stesso errore non si accorgerebbero di niente. */
+  function stradaEsiste(s, da, a, raggio) {
+    const passo = 3;
+    const cols = Math.ceil(s.mondo.w / passo), righe = Math.ceil(s.mondo.h / passo);
+    const idx = (i, j) => j * cols + i;
+    const libero = (x, y) => {
+      if (x < raggio || y < raggio || x > s.mondo.w - raggio || y > s.mondo.h - raggio) return false;
+      for (const d of s.dirupi) {
+        if (x >= d.x && x <= d.x + d.w && y >= d.y && y <= d.y + d.h) return false;
+      }
+      for (const a2 of s.alberi) if (Math.hypot(x - a2.x, y - a2.y) < a2.r + raggio) return false;
+      for (const m of s.muri) {
+        const cx = Math.max(m.x, Math.min(x, m.x + m.w));
+        const cy = Math.max(m.y, Math.min(y, m.y + m.h));
+        if (Math.hypot(x - cx, y - cy) < raggio) return false;
+      }
+      return true;
+    };
+    const cella = (p) => [Math.max(0, Math.min(cols - 1, Math.floor(p.x / passo))),
+      Math.max(0, Math.min(righe - 1, Math.floor(p.y / passo)))];
+    const [si, sj] = cella(da), [ti, tj] = cella(a);
+    const visto = new Uint8Array(cols * righe);
+    const coda = [[si, sj]];
+    visto[idx(si, sj)] = 1;
+    while (coda.length) {
+      const [i, j] = coda.pop();
+      if (i === ti && j === tj) return true;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const ni = i + di, nj = j + dj;
+        if (ni < 0 || nj < 0 || ni >= cols || nj >= righe) continue;
+        if (visto[idx(ni, nj)]) continue;
+        visto[idx(ni, nj)] = 1;
+        if (!libero(ni * passo + passo / 2, nj * passo + passo / 2)) continue;
+        coda.push([ni, nj]);
+      }
+    }
+    return false;
+  }
+
+  const chiusi = [];
+  for (let lv = 1; lv <= 10; lv++) {
+    for (let k = 0; k < 6; k++) {
+      const g = makeGame(def, util, lv);
+      const s = g.game.state();
+      const d = s.recinto.dentro;
+      const meta = { x: d.x + d.w / 2, y: d.y + d.h / 2 };
+      for (const p of s.pecore) {
+        if (!stradaEsiste(s, p, meta, 3)) { chiusi.push('L' + lv); break; }
+      }
+    }
+  }
+  check('dal gregge al recinto c\'è sempre una strada', chiusi.length === 0, chiusi.join(' '));
+
+  // il cancello non deve essere ostruito: è l'unico passaggio del recinto
+  const ostruiti = [];
+  for (let lv = 1; lv <= 10; lv++) {
+    for (let k = 0; k < 6; k++) {
+      const s = makeGame(def, util, lv).game.state();
+      const po = s.recinto.porta;
+      const cx = po.x + po.w / 2, cy = po.y + po.h / 2;
+      s.alberi.forEach((a) => {
+        if (Math.hypot(a.x - cx, a.y - cy) < a.r + 8) ostruiti.push('L' + lv);
+      });
+      s.dirupi.forEach((d) => {
+        const qx = Math.max(d.x, Math.min(cx, d.x + d.w));
+        const qy = Math.max(d.y, Math.min(cy, d.y + d.h));
+        if (Math.hypot(cx - qx, cy - qy) < 12) ostruiti.push('L' + lv);
+      });
+    }
+  }
+  check('e il cancello è sempre libero', ostruiti.length === 0, ostruiti.slice(0, 6).join(' '));
+
+  // il tempo concesso deve crescere col lavoro, non essere una cifra fissa
+  const tempoMedio = (lv) => {
+    let t = 0;
+    for (let k = 0; k < 8; k++) t += makeGame(def, util, lv).game.state().tempoTot;
+    return t / 8;
+  };
+  const t1 = tempoMedio(1), t5 = tempoMedio(5), t10 = tempoMedio(10);
+  check('il tempo concesso cresce col livello', t1 < t5 && t5 < t10,
+    [t1, t5, t10].map((x) => Math.round(x)).join(' < '));
+}
+
+console.log('\n[gregge: come si muovono le pecore]');
+{
+  const def = defs.gregge;
+
+  /* Una pecora sola, il cane a sedici pixel: deve scappare dalla parte
+     opposta. È la regola su cui si regge tutto il resto. */
+  {
+    const g = makeGame(def, util, 1);
+    const s = g.game.state();
+    const p = s.pecore[0];
+    const posto = pratoLibero(s, 26);
+    p.x = posto.x; p.y = posto.y; p.vx = 0; p.vy = 0;
+    parcheggia(s, p);
+    nonBrucare(s);
+    s.cane.x = p.x - 16; s.cane.y = p.y;
+    const prima = Math.hypot(p.x - s.cane.x, p.y - s.cane.y);
+    const x0 = p.x;
+    for (let i = 0; i < 45; i++) g.game.update(DT);
+    check('la pecora scappa dal cane',
+      Math.hypot(p.x - s.cane.x, p.y - s.cane.y) > prima + 3 && p.x > x0,
+      'da ' + Math.round(prima) + ' a ' + Math.round(Math.hypot(p.x - s.cane.x, p.y - s.cane.y)) + ' px');
+  }
+
+  /* Il cane lontano non spaventa nessuno: senza questa soglia il gregge
+     sarebbe comandabile da mezzo pascolo e non ci sarebbe mestiere. */
+  {
+    const g = makeGame(def, util, 1);
+    const s = g.game.state();
+    const p = s.pecore[0];
+    const posto2 = pratoLibero(s, 26);
+    p.x = posto2.x; p.y = posto2.y; p.vx = 0; p.vy = 0;
+    parcheggia(s, p);
+    s.cane.x = p.x - 70; s.cane.y = p.y;
+    const x0 = p.x, y0 = p.y;
+    for (let i = 0; i < 60; i++) g.game.update(DT);
+    check('da lontano il cane non le sposta', Math.hypot(p.x - x0, p.y - y0) < 8,
+      Math.round(Math.hypot(p.x - x0, p.y - y0)) + ' px di deriva al pascolo');
+  }
+
+  /* Istinto di gregge: spaventate, si avvicinano fra loro. Il gioco si può
+     giocare solo per questo — altrimenti ogni pecora sarebbe un problema a
+     sé, dieci volte. */
+  {
+    const g = makeGame(def, util, 5);
+    const s = g.game.state();
+    const libere = s.pecore;
+    const centro = pratoLibero(s, 46);
+    libere.forEach((p, i) => {
+      p.x = centro.x + (i % 3) * 26 - 26;
+      p.y = centro.y + Math.floor(i / 3) * 26 - 26;
+      p.vx = 0; p.vy = 0;
+    });
+    const sparpaglio = () => {
+      const l = libere.filter((p) => p.stato === 'libera');
+      const cx = l.reduce((a, p) => a + p.x, 0) / l.length;
+      const cy = l.reduce((a, p) => a + p.y, 0) / l.length;
+      return Math.max(...l.map((p) => Math.hypot(p.x - cx, p.y - cy)));
+    };
+    const prima = sparpaglio();
+    for (let i = 0; i < 90; i++) {
+      // il cane gira attorno al gruppo, a distanza di spavento
+      const ang = i * 0.05;
+      s.cane.x = centro.x + Math.cos(ang) * 46;
+      s.cane.y = centro.y + Math.sin(ang) * 46;
+      g.game.update(DT);
+    }
+    check('spaventate si stringono insieme', sparpaglio() < prima - 2,
+      'sparpaglio da ' + Math.round(prima) + ' a ' + Math.round(sparpaglio()) + ' px');
+  }
+
+  /* E la promessa scritta nelle istruzioni: arrivargli addosso in mezzo
+     spacca il gruppo in due. Se questa non vale, il gioco mente. */
+  {
+    const g = makeGame(def, util, 6);
+    const s = g.game.state();
+    const n = s.pecore.length;
+    const fila = pratoLibero(s, 52);
+    s.pecore.forEach((p, i) => {
+      p.x = fila.x + (i - (n - 1) / 2) * 9;
+      p.y = fila.y;
+      p.vx = 0; p.vy = 0;
+    });
+    nonBrucare(s);
+    s.cane.x = fila.x; s.cane.y = fila.y + 34;
+    /* Il cane attraversa la fila e tira dritto. Si guarda il buco più largo
+       durante tutta la carica e quello alla fine: la prima versione guardava
+       solo l'ultimo istante dopo poco più di un secondo, quando il cane era
+       ancora dentro al gruppo e lo stava aprendo — misurava il momento
+       sbagliato e dichiarava che il gregge non si spaccava. */
+    let buco = 0, finale = 0;
+    for (let i = 0; i < 150; i++) {
+      s.cane.y -= 30 * DT;
+      g.game.update(DT);
+      const xs = s.pecore.filter((p) => p.stato === 'libera').map((p) => p.x).sort((a, b) => a - b);
+      finale = 0;
+      for (let k = 1; k < xs.length; k++) finale = Math.max(finale, xs[k] - xs[k - 1]);
+      buco = Math.max(buco, finale);
+    }
+    check('arrivandogli in mezzo il gregge si spacca in due', buco > 24,
+      'buco di ' + Math.round(buco) + ' px nel gruppo');
+    /* E le due metà non si ricuciono da sole: se si richiudessero appena
+       passato il cane, spaccare il gregge non costerebbe niente e la frase
+       nelle istruzioni sarebbe un modo di dire. */
+    check('e le due metà restano separate', finale > 20,
+      'dopo il passaggio il buco è ancora di ' + Math.round(finale) + ' px');
+  }
+
+  /* La pecora nera si fida di più: alla stessa distanza la bianca è già
+     partita e lei non si muove.
+
+     Il confronto va fatto di ciascuna con sé stessa, non una con l'altra: nel
+     punto in cui le si mette c'è sempre qualcosa — un albero a dodici pixel,
+     il bordo del pascolo — che le sposta un poco comunque, e la prima
+     versione di questa prova leggeva quello spostamento come paura. Misurare
+     la stessa pecora col cane vicino e col cane lontano toglie di mezzo il
+     terreno: resta solo la differenza che fa il cane. */
+  {
+    const def2 = defs.gregge;
+    const g = makeGame(def2, util, 7);
+    const s = g.game.state();
+    const nera = s.pecore.find((p) => p.nera);
+    const bianca = s.pecore.find((p) => !p.nera);
+    check('ai livelli alti ci sono pecore nere', !!nera);
+    if (nera && bianca) {
+      const mossa = (p, distanza) => {
+        const posto = pratoLibero(s, 30);
+        p.x = posto.x; p.y = posto.y; p.vx = 0; p.vy = 0;
+        parcheggia(s, p);
+        nonBrucare(s);
+        const x0 = p.x, y0 = p.y;
+        for (let i = 0; i < 72; i++) {
+          s.cane.x = p.x - distanza; s.cane.y = p.y;
+          g.game.update(DT);
+        }
+        return Math.hypot(p.x - x0, p.y - y0);
+      };
+      // 33 px sta fra le due soglie: dentro la paura della bianca, fuori da
+      // quella della nera. A 120 px nessuna delle due deve sentire niente.
+      const biancaVicino = mossa(bianca, 33);
+      const biancaLontano = mossa(bianca, 120);
+      const neraVicino = mossa(nera, 33);
+      const neraLontano = mossa(nera, 120);
+      check('a 33 px la pecora bianca è già partita',
+        biancaVicino > biancaLontano + 6,
+        'col cane a 33 px ' + biancaVicino.toFixed(1) + ' px, a 120 px ' + biancaLontano.toFixed(1) + ' px');
+      check('la nera a quella distanza non si muove',
+        neraVicino < neraLontano + 3,
+        'col cane a 33 px ' + neraVicino.toFixed(1) + ' px, a 120 px ' + neraLontano.toFixed(1) + ' px');
+      // ...ma avvicinandosi scappa anche lei, altrimenti sarebbe inamovibile
+      const neraAddosso = mossa(nera, 18);
+      check('e avvicinandosi scappa anche lei', neraAddosso > neraVicino + 6,
+        'col cane a 18 px ' + neraAddosso.toFixed(1) + ' px');
+    }
+  }
+}
+
+console.log('\n[gregge: recinto e dirupi]');
+{
+  const def = defs.gregge;
+
+  /* Dentro al recinto si sta tranquille: il cane che entra non le fa uscire.
+     Senza questa regola l'ultima pecora costerebbe le prime, e il livello si
+     chiuderebbe per logoramento. */
+  {
+    const g = makeGame(def, util, 2);
+    const s = g.game.state();
+    const d = s.recinto.dentro;
+    const p = s.pecore[0];
+    parcheggia(s, p);
+    p.x = d.x + d.w / 2; p.y = d.y + d.h / 2;
+    g.game.update(DT);
+    check('una pecora nel recinto viene contata', g.game.state().dentro === 1 && p.stato === 'recinto',
+      p.stato + ', dentro ' + g.game.state().dentro);
+    for (let i = 0; i < 180; i++) {
+      s.cane.x = p.x + 4; s.cane.y = p.y + 4;   // il cane le sta addosso, dentro
+      g.game.update(DT);
+    }
+    const ancoraDentro = p.x >= d.x && p.x <= d.x + d.w && p.y >= d.y && p.y <= d.y + d.h;
+    check('e non esce più, nemmeno col cane addosso', ancoraDentro && p.stato === 'recinto',
+      Math.round(p.x) + ',' + Math.round(p.y) + ' in ' + JSON.stringify({ x: d.x, y: d.y, w: d.w, h: d.h }));
+  }
+
+  /* Il cane non cade: si ferma sul bordo come fa un cane vero. Se cadesse, il
+     dirupo sarebbe un pericolo per chi gioca invece di uno strumento da usare
+     come sponda. */
+  {
+    const g = makeGame(def, util, 8);
+    const s = g.game.state();
+    check('ai livelli alti ci sono dirupi', s.dirupi.length > 0, s.dirupi.length + ' dirupi');
+    /* Il lato da cui avvicinarsi non è sempre lo stesso: i dirupi entrano nel
+       pascolo da un bordo, quindi quello contro il bordo del mondo non ha
+       prato davanti. Si prova da tutti e quattro i lati e si usa il primo
+       che ha terreno — prima si partiva sempre da sinistra, e con una forra
+       attaccata al bordo sinistro il cane nasceva dentro al vuoto e la prova
+       falliva senza che ci fosse niente di rotto. */
+    const d = s.dirupi[0];
+    const lati = [
+      { x: d.x - 8, y: d.y + d.h / 2, vx: 1, vy: 0 },
+      { x: d.x + d.w + 8, y: d.y + d.h / 2, vx: -1, vy: 0 },
+      { x: d.x + d.w / 2, y: d.y - 8, vx: 0, vy: 1 },
+      { x: d.x + d.w / 2, y: d.y + d.h + 8, vx: 0, vy: -1 }
+    ].filter((l) => l.x > 6 && l.y > 6 && l.x < s.mondo.w - 6 && l.y < s.mondo.h - 6 &&
+      !s.dirupi.some((r) => l.x >= r.x && l.x <= r.x + r.w && l.y >= r.y && l.y <= r.y + r.h) &&
+      !s.alberi.some((a) => Math.hypot(l.x - a.x, l.y - a.y) < a.r + 5));
+    check('il dirupo ha del prato su almeno un lato', lati.length > 0);
+    if (lati.length) {
+      const l = lati[0];
+      s.cane.x = l.x; s.cane.y = l.y;
+      g.input.stick.x = l.vx; g.input.stick.y = l.vy; g.input.stick.attiva = true;
+      for (let i = 0; i < 150; i++) g.game.update(DT);
+      const dentroDirupo = s.cane.x >= d.x && s.cane.x <= d.x + d.w &&
+        s.cane.y >= d.y && s.cane.y <= d.y + d.h;
+      check('il cane si ferma sul bordo del dirupo', !dentroDirupo,
+        'cane a ' + Math.round(s.cane.x) + ',' + Math.round(s.cane.y) +
+        ' dirupo x' + d.x + '-' + (d.x + d.w) + ' y' + d.y + '-' + (d.y + d.h));
+      g.input.stick.attiva = false; g.input.stick.x = 0; g.input.stick.y = 0;
+    }
+  }
+
+  /* Una pecora in fuga lungo il bordo non deve cadere: il dirupo per lei è una
+     staccionata. Era il difetto peggiore della prima versione — il 96% delle
+     cadute misurate avveniva col cane a venti o trenta pixel, cioè passando al
+     largo, e perdere una pecora senza poterci fare niente non è difficoltà. */
+  {
+    const def2 = defs.gregge;
+    let provata = false, caduta = false;
+    for (let k = 0; k < 10 && !provata; k++) {
+      const g = makeGame(def2, util, 8);
+      const s = g.game.state();
+      if (!s.dirupi.length) continue;
+      const d = s.dirupi[0];
+      if (d.y < 30) continue;
+      const p = s.pecore[0];
+      parcheggia(s, p);
+      p.x = d.x + d.w / 2; p.y = d.y - 8;         // appena sopra il bordo
+      p.vx = 0; p.vy = 0;
+      provata = true;
+      for (let i = 0; i < 120; i++) {
+        s.cane.x = p.x; s.cane.y = p.y - 24;      // spinge verso il vuoto, da lontano
+        g.game.update(DT);
+        if (p.caduta > 0 || p.stato === 'persa') caduta = true;
+      }
+    }
+    check('una pecora spinta da lontano corre lungo il bordo, non ci casca',
+      provata && !caduta, provata ? (caduta ? 'è caduta' : 'salva') : 'nessun dirupo adatto');
+  }
+
+  /* Ma all'angolo contro il vuoto ci finisce, ed è una cosa che ha fatto chi
+     gioca: dodici pixel sono il cane addosso. */
+  {
+    const def2 = defs.gregge;
+    let provata = false, caduta = false;
+    for (let k = 0; k < 10 && !provata; k++) {
+      const g = makeGame(def2, util, 8);
+      const s = g.game.state();
+      if (!s.dirupi.length) continue;
+      const d = s.dirupi[0];
+      if (d.y < 30) continue;
+      const p = s.pecore[0];
+      parcheggia(s, p);
+      p.x = d.x + d.w / 2; p.y = d.y - 4;
+      p.vx = 0; p.vy = 0;
+      provata = true;
+      for (let i = 0; i < 120; i++) {
+        s.cane.x = p.x; s.cane.y = p.y - 7;       // addosso, senza via di scampo
+        g.game.update(DT);
+        if (p.caduta > 0 || p.stato === 'persa') caduta = true;
+      }
+    }
+    check('schiacciata contro il vuoto, invece, cade', provata && caduta,
+      provata ? (caduta ? 'caduta' : 'non cade nemmeno addosso') : 'nessun dirupo adatto');
+  }
+
+  /* Oltre la tolleranza il livello è finito: è l'altra condizione di
+     sconfitta, e deve essere immediata, non un conteggio che si scopre alla
+     fine. */
+  {
+    const g = makeGame(def, util, 3);
+    const s = g.game.state();
+    check('al terzo livello si può perdere una pecora sola', s.tolleranza === 1, 'tolleranza ' + s.tolleranza);
+    const d = s.dirupi[0];
+    if (d) {
+      s.pecore[0].x = d.x + d.w / 2; s.pecore[0].y = d.y + d.h / 2;
+      for (let i = 0; i < 60; i++) g.game.update(DT);
+      check('la prima perdita non chiude la partita', !g.events.outcome && g.game.state().perse === 1,
+        'perse ' + g.game.state().perse + ', esito ' + g.events.outcome);
+      s.pecore[1].x = d.x + d.w / 2; s.pecore[1].y = d.y + d.h / 2;
+      for (let i = 0; i < 60; i++) g.game.update(DT);
+      check('la seconda sì', g.events.outcome === 'lose', String(g.events.outcome));
+    }
+  }
+}
+
+console.log('\n[gregge: il mestiere]');
+{
+  const def = defs.gregge;
+
+  /* Stare fermi deve far perdere: le pecore brucano, non si avviano al
+     recinto da sole. È la stessa invariante della colonna «fermo» del banco di
+     prova, verificata qui una volta per tutte. */
+  {
+    const g = makeGame(def, util, 1);
+    const s0 = g.game.state();
+    let t = 0;
+    while (!g.events.outcome && t < s0.tempoTot + 5) { g.game.update(DT); t += DT; }
+    check('stando fermi scende la notte e si perde',
+      g.events.outcome === 'lose' && g.game.state().dentro === 0,
+      'esito ' + g.events.outcome + ', dentro ' + g.game.state().dentro);
+  }
+
+  /* E il pilota simulato deve chiudere il primo livello quasi sempre e
+     l'ottavo spesso: se non ci riesce lui con la strategia giusta, il livello
+     non è difficile, è rotto. */
+  function partite(lv, quante) {
+    let vinte = 0;
+    for (let m = 0; m < quante; m++) {
+      const g = makeGame(def, util, lv);
+      const pilota = creaPilotaCane({ reazione: 0.14, errore: 6, spinta: 1 });
+      let t = 0;
+      while (!g.events.outcome && t < 300) {
+        pilota(g.game.state(), g.input.stick, DT);
+        g.game.update(DT);
+        t += DT;
+      }
+      if (g.events.outcome === 'win') vinte++;
+    }
+    return vinte;
+  }
+  /* Le soglie sono larghe di proposito: servono a distinguere «il livello si
+     chiude» da «il livello è rotto», non a rimisurare la difficoltà — quella la
+     fa test/balance.js con quaranta partite per casella. Con otto partite e una
+     soglia a sette, una percentuale vera del 95% faceva fallire il test una
+     volta su venti: un test che suona l'allarme a caso è peggio di un test in
+     meno, perché insegna a ignorarlo. */
+  const v1 = partite(1, 12);
+  check('il pilota chiude il primo livello', v1 >= 9, v1 + '/12');
+  const v8 = partite(8, 12);
+  check('e l\'ottavo almeno un terzo delle volte', v8 >= 4, v8 + '/12');
 }
 
 /* ---------- classifica globale (Firebase finto, regole vere) ---------- */

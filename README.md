@@ -18,6 +18,7 @@ da `file://`) e giochi.
 | 🔢 **Tessere** | Rompicapo scorrevole (il «quindici») | Griglia da 3×3 (livelli 1-2) a 4×4 e 5×5, mescolamento più profondo; il tempo cresce con la griglia — un paio di minuti per il 3×3, quattro per il 4×4, oltre sei per il 5×5 |
 | 🧭 **Labirinto** | Prima persona, con una mappa che si dimentica | Labirinto più grande, memoria della mappa più corta (24s al 1° livello, 10s al 10°), meno alberi, vista più corta |
 | 🍕 **Pizze** | Consegne a domicilio in 3D, per le strade vere di Codiverno, fra traffico e semafori | Turni più lunghi e più lontani dalla pizzeria, più pizze per giro (una fino al 2°, due fino al 4°, poi tre) e un margine di calore che si stringe: dal +54% sul tempo di un buon guidatore al primo turno al +5% del decimo |
+| 🐕 **Gregge** | Cane da pastore in pixel art sulle Alpi: le pecore non si comandano, si spingono | Più pecore (da 4 a 14), pascolo più largo (fino a 1,74×), boschi che spaccano il gruppo, dirupi dal 3° livello, pecore nere che si fanno avvicinare di più. Il tempo è il lavoro che il livello chiede — quattro secondi e due a pecora più la strada — per un margine che si stringe, dal +61% del primo livello al +25% del decimo |
 | 👾 **Orda** | Sparatutto dall'alto in un dungeon di camere e corridoi: i mostri dormono finché non ti vedono | Ondate più numerose, mostri più veloci e con la vista più lunga (quindi se ne sveglia di più tutti insieme), tipi nuovi che si aggiungono ai vecchi — scattanti dal 2°, corazzati dal 3°, tiratori dal 4°, gemelli che si sdoppiano dal 7° — e un boss ogni cinque livelli |
 
 Il **Labirinto** si gioca in prima persona con il joystick. La pianta non è mai
@@ -31,6 +32,24 @@ diversi uno dall'altro per tinta e sagoma. L'**arrivo** si vede da lontano: una
 colonna di luce verde che supera i muri, e sotto la statua di pietra di un
 bestione rosa addormentato — la si raggiunge per chiudere il livello. La scena è disegnata in raycasting
 sul canvas 2D, senza WebGL, a 60 fps.
+
+In **Gregge** si conduce un gregge, e condurre non è comandare: il cane muove
+la paura, e le pecore fanno il resto. Ognuna somma quattro spinte — via dal
+cane, verso le compagne che ha intorno, via da quelle addosso, via dagli
+ostacoli — che è il modello di Strömbom per la conduzione del gregge. Da quelle
+quattro righe viene gratis tutto il mestiere: **stare dietro al gruppo rispetto
+al recinto lo fa avanzare, stare di fianco lo fa girare, arrivargli addosso in
+mezzo lo spacca in due.** Non c'è una regola che lo dica, è geometria.
+
+I **dirupi** sono la difficoltà del paesaggio, e valgono in modo diverso per te
+e per loro: il cane si ferma sul bordo come fa un cane vero, quindi il vuoto per
+te è una sponda da usare; le pecore lo trattano da staccionata finché possono,
+ma se le schiacci contro il vuoto con il muso addosso ci finiscono dentro.
+Oltre il numero di perdite consentite il turno è chiuso. I **boschi** non
+fermano nessuno: dividono, e un gregge diviso è due greggi da rimettere
+insieme. La grafica è pixel art disegnata in questo repository, sprite per
+sprite, con la montagna in fondo al pascolo e la luce che si spegne mentre il
+tempo finisce.
 
 **Forza 4** è l'unico a due modalità: si sceglie a inizio partita fra sfida alla
 CPU e due giocatori sullo stesso dispositivo, a mosse alternate. In due, il
@@ -323,6 +342,7 @@ test/balance.js             banco di prova della difficoltà
 test/regole.js              meccaniche difficili da raggiungere nel browser
 test/orda-bot.js            pilota simulato di Orda (naviga il dungeon)
 test/pizze-bot.js           pilota simulato di Pizze (segue la rotta, accosta)
+test/cane-bot.js            pastore simulato di Gregge (raduna, conduce, gira i dirupi)
 test/finto-firebase.js      Firebase finto con le regole vere dentro
 ```
 
@@ -390,6 +410,18 @@ iniettato in pagina: il pannello che chiede il nome prima di giocare, il nome
 occupato da correggere, il punteggio spedito a fine partita, la propria riga
 evidenziata fra le altre e i tre stati della parte in rete.
 
+Per Gregge verifica il pascolo e il mestiere: che da dove nasce ogni pecora
+esista una strada percorribile fino al recinto (il gioco rigenera i pascoli che
+non lo passano, e questo è un secondo parere scritto in modo diverso), che il
+cancello non sia mai ostruito, che le pecore scappino dal cane e solo da
+vicino, che spaventate si stringano insieme, che **arrivandogli in mezzo il
+gregge si spacchi in due** — è scritto nelle istruzioni, quindi deve essere
+vero — che la pecora nera vada avvicinata di più, che una pecora dentro al
+recinto non esca più nemmeno col cane addosso, che il cane si fermi sul bordo
+del dirupo, che una pecora spinta da lontano corra lungo il bordo invece di
+cascarci e che schiacciata contro il vuoto invece ci caschi, e che la seconda
+perdita chiuda un livello che ne tollera una.
+
 Il primo profilo, «fermo», non tocca niente: serve a verificare che stare fermi
 faccia perdere. Un gioco che si vince senza giocare è rotto quanto uno
 impossibile, ed è successo davvero — nel pong l'avversario sbagliava così spesso
@@ -414,6 +446,9 @@ Stato attuale (percentuale di livelli vinti dal profilo indicato):
 | Orda · fermo | 0% | 0% | 0% | 0% | 0% |
 | Orda · medio | 100% | 100% | 93% | 98% | 78% |
 | Orda · bravo | 100% | 100% | 85% | 95% | 85% |
+| Gregge · fermo | 0% | 0% | 0% | 0% | 0% |
+| Gregge · medio | 100% | 75% | 63% | 57% | 60% |
+| Gregge · bravo | 90% | 75% | 80% | 57% | 68% |
 | Pizze · fermo | 0% | 0% | 0% | 0% | 0% |
 | Pizze · medio | 100% | 75% | 48% | 68% | 18% |
 | Pizze · bravo | 100% | 100% | 80% | 90% | 100% |
@@ -423,6 +458,23 @@ solo metà della storia: «arrivato con il 3% di calore» e «arrivato con il 40
 contano tutti e due come una vittoria. Il numero che descrive la difficoltà è
 **quanto calore resta sulla consegna più tirata**: profilo medio 38% al 1°
 turno, 13% al 5°, 25% al 10°; profilo bravo 69%, 59%, 19%.
+
+Le righe di Gregge hanno una forma che negli altri giochi non si vede: «medio»
+e «bravo» stanno quasi sempre a pochi punti di distanza, e ai primi due livelli
+il profilo bravo vince *meno* (90% contro 100%). Con quaranta partite per
+casella quella differenza è dentro al rumore di misura, quindi non la chiamo un
+effetto; ma il verso è quello che il gioco si aspetta, e la spiegazione sta
+nelle istruzioni: il profilo bravo affonda la leva al massimo e decide dieci
+volte al secondo, cioè **corre**, e un cane che corre dentro al gregge lo spacca
+invece di spingerlo. Dal quarto livello in su, dove il pascolo è largo e le
+pecore sono tante, la velocità torna a pagare e bravo passa avanti. In un gioco
+di riflessi la colonna bravo sta sopra a tutte le altezze; qui il limite non è
+la mano, è dove ti metti — ed è per questo che i due profili, che differiscono
+solo per riflessi e precisione, finiscono così vicini.
+
+Il profilo «scarso» (non in tabella) scende da 53% a 40%, 30%, 15% e 0% fra il
+primo e il nono livello: è la colonna che misura se il gioco perdona, e qui
+perdona al primo livello e basta.
 
 Fino a ieri qui c'era scritto che la colonna «bravo» sarebbe rimasta piatta al
 100%, perché il tetto del gioco è la velocità di chi guida e il bot guida al

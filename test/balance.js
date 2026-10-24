@@ -12,6 +12,7 @@
 const { loadGames, makeInput, SFX } = require('./sandbox');
 const { creaPilota } = require('./orda-bot');
 const { creaPilota: creaPilotaPizze } = require('./pizze-bot');
+const { creaPilota: creaPilotaCane } = require('./cane-bot');
 
 const DT = 1 / 60;            // passo fisso di simulazione
 /* Taglio di sicurezza per le partite che non finiscono. Sta a 420 per le
@@ -191,6 +192,21 @@ const BOTS = {
       ardimento: 0.5 + 0.5 * (profile.speed - 240) / 240
     });
     return function (s, dt) { pilota(s, api.input.held, dt); };
+  },
+
+  /* Il cane da pastore non insegue: si mette dietro al gregge e lo lascia
+     avanzare. Il pilota sta in test/cane-bot.js, condiviso con regole.js, e
+     usa la strategia classica — radunare se il gregge è sparso, condurre se è
+     compatto — con la strada attorno ai dirupi cercata su una griglia. La
+     reazione diventa l'intervallo fra due decisioni, l'errore lo sbaglio nel
+     punto dove mettersi, la velocità quanto affonda la leva. */
+  gregge: (profile) => (api, game) => {
+    const pilota = creaPilotaCane({
+      reazione: Math.max(0.1, profile.reaction),
+      errore: profile.error,
+      spinta: Math.min(1, profile.speed / 420)
+    });
+    return function (s, dt) { pilota(s, api.input.stick, dt); };
   },
 
   /* Il bot dell'hockey ragiona come la CPU: si mette dietro al disco e poi ci

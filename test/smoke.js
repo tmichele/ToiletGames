@@ -32,7 +32,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   console.log('\n[home]');
   const cards = await page.$$('.card');
-  check('11 giochi in elenco', cards.length === 11, cards.length + ' trovati');
+  check('12 giochi in elenco', cards.length === 12, cards.length + ' trovati');
   check('titoli presenti', (await page.textContent('#game-grid')).includes('Serpente'));
 
   // La versione in barra è il modo per accorgersi di una pagina vecchia in
@@ -760,6 +760,94 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   await sleep(400);
   check('classifiche sopravvivono al reload', (await page.textContent('#game-grid')).includes('record'));
   check('statistiche home', (await page.textContent('#home-stats')).includes('partite giocate'));
+
+  // ---- Gregge: la leva muove il cane, le pecore scappano, il recinto conta ----
+  console.log('\n[gregge]');
+  await page.goto(URL);
+  await sleep(300);
+  await page.click('.card:has-text("Gregge")');
+  await page.click('.btn:has-text("Gioca")');
+  await sleep(300);
+  check('gregge parte', (await page.evaluate(() => TG.engine.getState())) === 'running');
+  check('i comandi sono la leva', await page.isVisible('.stick'));
+
+  const greggeStato = () => page.evaluate(() => {
+    const s = TG.engine.inspect().game;
+    return {
+      cane: { x: s.cane.x, y: s.cane.y },
+      pecore: s.pecore.map((p) => ({ x: p.x, y: p.y, stato: p.stato })),
+      dentro: s.dentro, totale: s.totale, tempo: s.tempo, tempoTot: s.tempoTot,
+      mondo: s.mondo
+    };
+  });
+
+  const gr0 = await greggeStato();
+  check('il pascolo è più grande dello schermo o quanto lo schermo',
+    gr0.mondo.w >= 200 && gr0.mondo.h >= 260, gr0.mondo.w + '×' + gr0.mondo.h);
+
+  /* La leva si trascina davvero col dito: è l'unico comando del gioco, e un
+     test che muovesse il cane chiamando il codice direttamente non direbbe
+     niente su quel passaggio. */
+  const leva = await page.$eval('.stick', (el) => {
+    const r = el.getBoundingClientRect();
+    return { cx: r.x + r.width / 2, cy: r.y + r.height / 2, r: r.width / 2 };
+  });
+  await page.mouse.move(leva.cx, leva.cy);
+  await page.mouse.down();
+  await page.mouse.move(leva.cx + leva.r * 0.8, leva.cy, { steps: 4 });
+  await sleep(600);
+  const grDx = await greggeStato();
+  await page.mouse.up();
+  check('trascinando la leva a destra il cane va a destra',
+    grDx.cane.x > gr0.cane.x + 4, Math.round(gr0.cane.x) + ' -> ' + Math.round(grDx.cane.x));
+
+  const grMosso = await canvasHash();
+  await page.keyboard.down('ArrowUp');
+  await sleep(500);
+  await page.keyboard.up('ArrowUp');
+  const grSu = await greggeStato();
+  check('e le frecce funzionano come la leva', grSu.cane.y < grDx.cane.y - 4,
+    Math.round(grDx.cane.y) + ' -> ' + Math.round(grSu.cane.y));
+  check('il campo si ridisegna', (await canvasHash()) !== grMosso);
+
+  /* Le pecore scappano: il cane si mette a fianco della più vicina e quella
+     deve allontanarsi. Lo stato è lo stesso oggetto che usa il gioco, quindi
+     spostare il cane qui è come averlo portato lì con la leva — solo più
+     rapido di una partita intera. */
+  const fuga = await page.evaluate(async () => {
+    const s = TG.engine.inspect().game;
+    const p = s.pecore.find((q) => q.stato === 'libera');
+    s.cane.x = p.x - 16; s.cane.y = p.y;
+    const prima = Math.hypot(p.x - s.cane.x, p.y - s.cane.y);
+    await new Promise((r) => setTimeout(r, 500));
+    return { prima: prima, dopo: Math.hypot(p.x - s.cane.x, p.y - s.cane.y) };
+  });
+  check('la pecora scappa dal cane', fuga.dopo > fuga.prima + 2,
+    Math.round(fuga.prima) + ' -> ' + Math.round(fuga.dopo) + ' px');
+
+  /* Una pecora dentro al recinto viene contata e il livello si chiude quando
+     ci sono tutte: è la catena che porta al punteggio e alla classifica, e nel
+     browser conviene verificarla tutta. */
+  const chiusura = await page.evaluate(async () => {
+    const s = TG.engine.inspect().game;
+    const d = s.recinto.dentro;
+    s.pecore.forEach((p, i) => {
+      p.x = d.x + 4 + (i % 3) * 5;
+      p.y = d.y + 4 + Math.floor(i / 3) * 5;
+      p.vx = 0; p.vy = 0;
+    });
+    s.cane.x = s.recinto.mira.x; s.cane.y = s.recinto.mira.y;
+    await new Promise((r) => setTimeout(r, 400));
+    return { dentro: TG.engine.inspect().game.dentro, stato: TG.engine.getState() };
+  });
+  check('le pecore nel recinto vengono contate', chiusura.dentro > 0, 'dentro ' + chiusura.dentro);
+  check('e col gregge dentro il livello è superato',
+    chiusura.stato === 'levelclear' || (await page.textContent('#overlay-title')).includes('superato'),
+    chiusura.stato + ' / ' + (await page.textContent('#overlay-title')));
+  check('il punteggio è salito', parseInt(await page.textContent('#hud-score'), 10) > 0,
+    await page.textContent('#hud-score'));
+  await page.click('#btn-back');
+  await sleep(200);
 
   /* ---- classifica globale, con un Firebase finto in pagina ---- */
   /* Quello che serve provare nel browser è la catena intera: il pannello che
