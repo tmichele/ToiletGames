@@ -197,8 +197,9 @@ TG.ui = (function () {
 
   /* ---------- il nome del giocatore ---------- */
 
-  function renderNome(messaggio, classe) {
+  function renderNome(messaggio, classe, mostraSalta) {
     if (!el.inputNome) return;
+    if (el.nomeSalta) el.nomeSalta.hidden = !mostraSalta;
     var st = (TG.nuvola && TG.nuvola.stato()) || { attiva: false, nome: '' };
     el.nomeIntro.textContent = st.attiva
       ? 'In classifica globale i nomi sono unici: questo diventa tuo e nessun ' +

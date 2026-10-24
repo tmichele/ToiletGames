@@ -8,7 +8,14 @@ const { chromium } = require('playwright');
 const path = require('path');
 const { creaPilota } = require('./orda-bot');
 
-const URL = 'file://' + path.resolve(__dirname, '..', 'index.html');
+/* La pagina si apre con ?classifica=off: da quando la classifica globale è
+   configurata per davvero, aprire index.html significa chiedere un nome e
+   scrivere nel database vero. Il test deve provare la suite, non sporcare la
+   classifica di chi gioca — e la parte in rete ha già il suo blocco più sotto,
+   con un Firebase finto. L'interruttore è anche una cosa utile di suo: serve a
+   chiunque voglia aprire il sito senza entrare in gara. */
+const URL = 'file://' + path.resolve(__dirname, '..', 'index.html') + '?classifica=off';
+const URL_VERO = 'file://' + path.resolve(__dirname, '..', 'index.html');
 const errors = [];
 let failures = 0;
 
@@ -857,6 +864,10 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
      classifica pubblica sporcata a ogni esecuzione — e il finto applica le
      stesse regole, quindi quello che passa qui passa anche là. */
   console.log('\n[classifica globale: spenta]');
+  check('con ?classifica=off non viene chiesto nessun nome',
+    !(await page.isVisible('#modal-nome')) && !(await page.isVisible('#modal')));
+  check('e il gioco parte senza passare da lì',
+    (await page.evaluate(() => TG.nuvola.attiva())) === false);
   await page.click('.card:has-text("Serpente")');
   await page.click('.btn:has-text("Gioca")');
   await sleep(200);
@@ -888,7 +899,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     window.fetch = window.__finto.fetch;
     window.TG_CLASSIFICA = { url: 'https://finto-db.test', chiave: 'chiave-finta' };
   `);
-  await pagina2.goto(URL);
+  await pagina2.goto(URL_VERO);
   await sleep(400);
 
   check('appena aperta chiede il nome', await pagina2.isVisible('#modal-nome'),

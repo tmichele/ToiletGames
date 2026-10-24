@@ -59,7 +59,8 @@ function loadCore(opzioni) {
       removeItem: (k) => { delete memoria[k]; }
     },
     fetch: o.fetch || null,
-    TG_CLASSIFICA: o.classifica || null
+    // `false` va passato com'è: è il modo di provare l'interruttore
+    TG_CLASSIFICA: (o.classifica === undefined ? null : o.classifica)
   };
   ctx.window = ctx;
   vm.createContext(ctx);

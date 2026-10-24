@@ -12,16 +12,20 @@
      può mai girare con uno script vecchio rimasto nella cache del browser —
      è successo: il gioco nuovo c'era e i suoi comandi no, perché input.js
      era quello di prima. -->
-<meta name="versione" content="11" data-data="2026-10-24">
-<!-- Classifica globale (Firebase Realtime Database). Vuoto = spenta: la suite
-     funziona come sempre con le sole classifiche locali. Per accenderla:
-     content = indirizzo del database, data-chiave = chiave web del progetto.
-     Non sono segreti — la chiave web di Firebase sta in chiaro in qualunque
-     app Firebase — quello che protegge i dati sono le regole del database, in
-     dati/regole-firebase.json. Istruzioni: docs/CLASSIFICA_GLOBALE.md -->
-<meta name="classifica" content="" data-chiave="">
+<meta name="versione" content="12" data-data="2026-10-24">
+<!-- Classifica globale: accesa, sul progetto Firebase toiletgames-f9ec7
+     (Realtime Database in europe-west1). I due valori qui sotto NON sono
+     segreti — la chiave web di Firebase sta in chiaro in qualunque app
+     Firebase, identifica il progetto e non autorizza niente: a proteggere i
+     dati sono le regole del database, in dati/regole-firebase.json. Svuotando
+     i due attributi la classifica globale si spegne e restano quelle locali;
+     per spegnerla solo nella propria scheda basta aprire la pagina con
+     ?classifica=off. Istruzioni: docs/CLASSIFICA_GLOBALE.md -->
+<meta name="classifica"
+      content="https://toiletgames-f9ec7-default-rtdb.europe-west1.firebasedatabase.app"
+      data-chiave="AIzaSyAb0-9iSxRw5pp5l3cm4A-U4Hjcc4TiFqs">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚽</text></svg>">
-<link rel="stylesheet" href="assets/css/style.css?v=11">
+<link rel="stylesheet" href="assets/css/style.css?v=12">
 </head>
 <body>
 
@@ -95,6 +99,12 @@
           <button class="btn" id="btn-nome-ok" type="submit">Prendi questo nome</button>
         </form>
         <p class="board__stato" id="nome-stato" role="status"></p>
+        <!-- Via d'uscita: se prendere il nome non riesce per colpa del server
+             (rete giù, progetto configurato male) si deve poter giocare lo
+             stesso. La classifica globale è un extra, non una condizione per
+             giocare: senza questo pulsante un errore lassù renderebbe la suite
+             inutilizzabile quaggiù. -->
+        <button class="link-btn" id="btn-nome-salta" hidden>Gioca senza classifica globale</button>
       </section>
       <section id="modal-help" hidden>
         <p class="hint" id="game-howto"></p>

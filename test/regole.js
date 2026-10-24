@@ -1817,6 +1817,15 @@ async function provaClassificaGlobale() {
       JSON.stringify({ rank: res.rank, nuvola: res.nuvola }));
     const nome = TG.profile.setName('Niccolò!!');
     check('il nome resta usabile anche senza nuvola', nome === 'Niccolo', nome);
+
+    /* L'interruttore: con la classifica configurata per davvero, c'è un modo
+       di aprire la pagina senza entrarci — serve a chi vuole solo giocare e
+       al test di fumo, che altrimenti scriverebbe nella classifica vera a
+       ogni esecuzione. */
+    const finto = creaFintoFirebase({});
+    const spento = loadCore({ fetch: finto.fetch, classifica: false }).TG;
+    check('l\'interruttore spegne la classifica globale anche se è configurata',
+      spento.nuvola.attiva() === false && spento.nuvola.invia('pong', { punti: 10, livello: 1 }) === 'spenta');
   }
 
   console.log('\n[classifica globale: il nome si prende]');

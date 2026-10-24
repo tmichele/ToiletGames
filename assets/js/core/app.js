@@ -40,6 +40,7 @@
     inputNome: document.getElementById('input-nome'),
     nomeOk: document.getElementById('btn-nome-ok'),
     nomeStato: document.getElementById('nome-stato'),
+    nomeSalta: document.getElementById('btn-nome-salta'),
     touchControls: document.getElementById('touch-controls'),
     howto: document.getElementById('game-howto'),
     version: document.getElementById('app-version')
@@ -47,6 +48,7 @@
 
   var current = null;        // gioco aperto
   var dopoNome = null;       // cosa si stava facendo quando è servito il nome
+  var rinunciato = false;    // si gioca senza classifica globale (per questa visita)
 
   TG.ui.init(el);
   // la coda dei risultati non spediti riparte da sola, se c'è qualcosa in coda
@@ -94,13 +96,13 @@
      non dopo, perché un risultato arrivato senza nome resterebbe fuori
      classifica e sarebbe già una partita buttata. */
   function serveNome() {
-    return TG.nuvola.attiva() && !TG.nuvola.nome();
+    return TG.nuvola.attiva() && !TG.nuvola.nome() && !rinunciato;
   }
 
   function apriNome(messaggio, poi) {
     dopoNome = poi || null;
     if (TG.engine.getState() === 'running') TG.engine.pause();
-    TG.ui.renderNome(messaggio || '');
+    TG.ui.renderNome(messaggio || '', '', false);
     TG.ui.nomeInAttesa(false);
     TG.ui.showModal('nome');
   }
@@ -112,8 +114,13 @@
     TG.nuvola.prendiNome(scritto, function (err, nome) {
       TG.ui.nomeInAttesa(false);
       if (err) {
-        // il nome occupato non è un guasto: si riscrive e si riprova
-        TG.ui.renderNome(err.message, err.preso ? 'is-warn' : 'is-err');
+        /* Due errori diversi. «Questo nome è di un altro» è una cosa che il
+           giocatore può correggere, e si riscrive. Tutto il resto — rete giù,
+           accesso anonimo non attivo, regole non pubblicate — non dipende da
+           lui, e in quel caso deve poter giocare lo stesso: compare la via
+           d'uscita, perché un intoppo sul server non può lasciare la suite
+           bloccata su un pannello. */
+        TG.ui.renderNome(err.message, err.preso ? 'is-warn' : 'is-err', !err.preso);
         if (el.inputNome) { el.inputNome.value = scritto; el.inputNome.focus(); }
         return;
       }
@@ -311,6 +318,15 @@
   el.formNome.addEventListener('submit', function (e) {
     e.preventDefault();
     confermaNome();
+  });
+
+  el.nomeSalta.addEventListener('click', function () {
+    rinunciato = true;
+    TG.ui.hideModal();
+    TG.ui.renderHomeStats();
+    var poi = dopoNome;
+    dopoNome = null;
+    if (poi) poi(TG.profile.getName());
   });
 
   function paintSoundBtn() {

@@ -40,10 +40,28 @@ TG.nuvola = (function () {
 
   /* ---------- configurazione ---------- */
 
+  /* Interruttore: `?classifica=off` nell'indirizzo (o window.TG_CLASSIFICA a
+     false) spegne la classifica globale per quella scheda. Serve a due cose —
+     aprire la pagina per provarla senza entrare in classifica e senza che
+     venga chiesto un nome, e far girare il test di fumo sulla pagina vera
+     senza scrivere nel database vero. Senza un interruttore del genere,
+     l'unico modo di provare la suite «da spenta» sarebbe svuotare il meta,
+     cioè modificare il sito. */
+  function spenta() {
+    try {
+      if (window.TG_CLASSIFICA === false) return true;
+      var q = (typeof location !== 'undefined' && location.search) || '';
+      return /[?&]classifica=(off|no|0)(&|$)/.test(q);
+    } catch (e) {
+      return false;
+    }
+  }
+
   /* Due sorgenti: l'oggetto window.TG_CLASSIFICA, se qualcuno vuole puntare a
      un altro database senza toccare la pagina (lo usa il test di fumo con un
      Firebase finto), altrimenti il meta di index.html. */
   function leggiConfig() {
+    if (spenta()) return null;
     var c = window.TG_CLASSIFICA;
     if (c && c.url && c.chiave) {
       return { url: String(c.url).replace(/\/+$/, ''), chiave: String(c.chiave) };

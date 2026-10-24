@@ -230,12 +230,23 @@ Come funziona per chi gioca:
   raggiunge, eccola — perché un elenco vuoto direbbe con la stessa faccia «non
   ha ancora giocato nessuno» e «la rete non va».
 
-Sotto c'è Firebase (Realtime Database via REST, utente anonimo, regole che
-impediscono di scrivere la riga di un altro). Si accende incollando due valori
-nel `<meta name="classifica">` di `index.html`; finché sono vuoti la suite si
-comporta come sempre, senza una chiamata di rete. Le istruzioni, le regole da
-incollare e i costi stanno in
-[docs/CLASSIFICA_GLOBALE.md](docs/CLASSIFICA_GLOBALE.md).
+**È accesa**, sul progetto Firebase `toiletgames-f9ec7` (Realtime Database in
+`europe-west1`): i due valori stanno nel `<meta name="classifica">` di
+`index.html` e non sono segreti — la chiave web di Firebase sta in chiaro in
+qualunque app Firebase, identifica il progetto e non autorizza niente. A
+proteggere i dati sono le regole del database, in
+[`dati/regole-firebase.json`](dati/regole-firebase.json), che è l'unico posto
+che il browser non può aggirare. Come è stata montata (e come montarne
+un'altra) sta in [docs/CLASSIFICA_GLOBALE.md](docs/CLASSIFICA_GLOBALE.md).
+
+Chi vuole giocare senza entrare in gara apre la pagina con **`?classifica=off`**:
+per quella scheda la classifica globale non esiste, non viene chiesto nessun
+nome e non parte nessuna chiamata. È anche il modo in cui il test di fumo gira
+sulla pagina vera senza scrivere nella classifica di tutti.
+
+E se qualcosa lassù non va — rete assente, progetto configurato male — il
+pannello del nome offre **«Gioca senza classifica globale»**: un intoppo sul
+server non può lasciare bloccata una suite che funziona benissimo da sola.
 
 Una cosa va detta e sta scritta anche lì: **i punti li calcola il browser,
 quindi si possono falsificare.** Le regole del database controllano la forma e

@@ -5,6 +5,11 @@ chi gioca. Accendendo la classifica globale, invece, i punteggi di tutti
 finiscono nello stesso posto e c'è una gara — un nome per giocatore, una riga
 per gioco, la propria evidenziata in mezzo alle altre.
 
+**Stato: accesa.** Il progetto è `toiletgames-f9ec7`, con il Realtime Database
+in `europe-west1`; i due valori sono già in `index.html`. Questa pagina resta
+per due motivi: dice come è stata montata (e quindi come rimontarla altrove), e
+dice dove guardare quando qualcosa non va.
+
 Quello che serve è un progetto Firebase, che va creato una volta sola. Sono
 cinque minuti di console e due valori da incollare in `index.html`.
 
@@ -79,6 +84,19 @@ Poi si alza il numero di versione (`<meta name="versione">`), si pubblica, e la
 classifica globale è accesa. Finché i due valori sono vuoti resta spenta e la
 suite si comporta come sempre: nessun errore, nessuna chiamata, solo le
 classifiche locali.
+
+## Spegnerla, del tutto o per una volta
+
+Svuotando i due attributi del `<meta name="classifica">` la classifica globale
+si spegne per tutti e restano quelle locali. Per spegnerla **solo nella propria
+scheda** si apre la pagina con `?classifica=off`: niente nome da scegliere,
+niente chiamate, niente righe scritte. Lo usa anche il test di fumo, che gira
+sulla pagina vera e non deve sporcare la classifica di chi gioca.
+
+E se prendere il nome fallisce per colpa del server — accesso anonimo non
+attivo, regole non pubblicate, rete assente — il pannello offre «Gioca senza
+classifica globale»: la suite funziona benissimo da sola, e un intoppo lassù
+non deve bloccarla quaggiù.
 
 ## Come si comporta
 
