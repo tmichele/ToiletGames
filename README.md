@@ -460,17 +460,23 @@ contano tutti e due come una vittoria. Il numero che descrive la difficoltà è
 turno, 13% al 5°, 25% al 10°; profilo bravo 69%, 59%, 19%.
 
 Le righe di Gregge hanno una forma che negli altri giochi non si vede: «medio»
-e «bravo» stanno quasi sempre a pochi punti di distanza, e ai primi due livelli
-il profilo bravo vince *meno* (90% contro 100%). Con quaranta partite per
-casella quella differenza è dentro al rumore di misura, quindi non la chiamo un
-effetto; ma il verso è quello che il gioco si aspetta, e la spiegazione sta
-nelle istruzioni: il profilo bravo affonda la leva al massimo e decide dieci
-volte al secondo, cioè **corre**, e un cane che corre dentro al gregge lo spacca
-invece di spingerlo. Dal quarto livello in su, dove il pascolo è largo e le
-pecore sono tante, la velocità torna a pagare e bravo passa avanti. In un gioco
-di riflessi la colonna bravo sta sopra a tutte le altezze; qui il limite non è
-la mano, è dove ti metti — ed è per questo che i due profili, che differiscono
-solo per riflessi e precisione, finiscono così vicini.
+e «bravo» non stanno in ordine, si rincorrono. Il bravo vince *meno* del medio
+al primo livello (90% contro 100%), passa avanti dal quarto all'ottavo (83%,
+80%, 73% contro 78%, 63%, 53%) e **al decimo crolla al 38% contro il 63% del
+medio**.
+
+La spiegazione che il gioco suggerisce è la stessa cosa scritta nelle
+istruzioni: il profilo bravo affonda la leva al massimo e decide dieci volte al
+secondo, cioè **corre**, e un cane che corre dentro al gregge lo spacca invece
+di spingerlo. Dove il pascolo è largo e le pecore poche la velocità paga; al
+decimo livello, con dodici pecore, sei boschi e tre dirupi, spaccare il gruppo
+costa più di quanto la velocità renda. Al primo livello la differenza di dieci
+punti è dentro al rumore di misura e non la chiamerei un effetto; i venticinque
+punti del decimo, con quaranta partite per casella, sono un'altra cosa.
+
+Negli altri giochi la colonna «bravo» sta sopra a tutte le altezze, perché il
+limite è la mano. Qui il limite è dove ti metti, e avere riflessi migliori non
+basta: è l'unica riga della tabella in cui giocare più in fretta fa perdere.
 
 Il profilo «scarso» (non in tabella) scende da 53% a 40%, 30%, 15% e 0% fra il
 primo e il nono livello: è la colonna che misura se il gioco perdona, e qui
