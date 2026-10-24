@@ -121,13 +121,24 @@ non deve bloccarla quaggiù.
 Il pannello 🏆 dice sempre in che stato è la parte in rete, e l'errore che
 riporta è quello di Firebase, non una frase generica. I casi che capitano:
 
+I codici di Firebase vengono tradotti nella frase che indica il rimedio, col
+codice originale fra parentesi per chi deve cercarlo:
+
 | Cosa si legge | Cosa manca |
 | --- | --- |
-| `Permission denied` scrivendo | le regole del punto 3 non sono state pubblicate |
-| Errore prendendo il nome, su un progetto nuovo | l'accesso anonimo (punto 2) non è attivo |
+| `CONFIGURATION_NOT_FOUND` prendendo il nome | **l'accesso anonimo (punto 2) non è attivo.** È l'errore della prima accensione: in *Authentication* non è mai stato premuto «Inizia», quindi per Firebase quel progetto non ha proprio un servizio di accesso |
+| «le regole del database non sono state pubblicate» | il punto 3. Il database è ancora in modalità bloccata e rifiuta anche di farsi leggere |
+| «è già di un altro giocatore» | niente: quel nome è occupato davvero, se ne sceglie un altro |
 | `API key not valid` | `data-chiave` non è la chiave web del progetto |
 | Non raggiungibile, sempre | l'indirizzo in `content` ha la regione sbagliata: deve essere quello che la console mostra in cima al database |
 | `Index not defined` leggendo | nelle regole manca `".indexOn": "punti"` — c'è in quelle di `dati/regole-firebase.json` |
+
+Le prime due si somigliano e vogliono dire cose diverse, quindi il codice le
+distingue invece di tirare a indovinare: un rifiuto scrivendo il nome può
+essere «quel nome è di un altro» oppure «il database rifiuta tutto», e per
+saperlo prova a leggere la classifica — che per regola è pubblica. Se non
+riesce nemmeno a leggere, il problema sono le regole, e cambiare nome non
+servirebbe a niente.
 
 Una cosa non ho potuto verificarla da qui: **che il browser non blocchi le
 chiamate per CORS.** La rete di questo ambiente non raggiunge gli host di

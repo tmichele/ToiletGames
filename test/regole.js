@@ -1862,6 +1862,39 @@ async function provaClassificaGlobale() {
     check('il nome di default non si può prendere', !!r5.err, (r5.err && r5.err.message) || 'accettato');
   }
 
+  console.log('\n[classifica globale: progetto configurato male]');
+  {
+    /* I due passi che si fanno in console e che il codice non può fare: senza,
+       l'errore crudo di Firebase non dice niente a nessuno. Sono i due modi in
+       cui una classifica globale nuova non parte, ed è capitato davvero: alla
+       prima accensione la risposta è stata CONFIGURATION_NOT_FOUND. */
+    const senzaAnonimo = creaFintoFirebase({ anonimo: false });
+    const uno = browser(senzaAnonimo);
+    const r1 = await chiama(uno.nuvola.prendiNome, 'Teo');
+    check('senza accesso anonimo l\'errore dice dove mettere le mani',
+      !!r1.err && /accesso anonimo non è attivo/.test(r1.err.message),
+      (r1.err && r1.err.message) || 'nessun errore');
+    check('e il codice originale resta leggibile',
+      !!r1.err && /CONFIGURATION_NOT_FOUND/.test(r1.err.message));
+
+    const senzaRegole = creaFintoFirebase({ regole: false });
+    const due = browser(senzaRegole);
+    const r2 = await chiama(due.nuvola.prendiNome, 'Teo');
+    check('con le regole non pubblicate non si dice «nome già preso»',
+      !!r2.err && !r2.err.preso && /regole/.test(r2.err.message),
+      (r2.err && r2.err.message) || 'nessun errore');
+
+    /* Il contrario deve restare vero: col progetto a posto, un nome occupato è
+       un nome occupato e si corregge cambiandolo. */
+    const sano = creaFintoFirebase({});
+    const tre = browser(sano);
+    await chiama(tre.nuvola.prendiNome, 'Teo');
+    const quattro = browser(sano);
+    const r3 = await chiama(quattro.nuvola.prendiNome, 'Teo');
+    check('mentre col progetto a posto resta «scegline un altro»',
+      !!r3.err && r3.err.preso === true, (r3.err && r3.err.message) || 'nessun errore');
+  }
+
   console.log('\n[classifica globale: cosa ci finisce]');
   {
     const finto = creaFintoFirebase({});

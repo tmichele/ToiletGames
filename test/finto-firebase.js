@@ -23,7 +23,11 @@ function creaFintoFirebase(opzioni) {
   var refresh = {};           // refresh token -> uid
   var contatore = 0;
   var chiamate = [];
-  var stato = { guasto: !!o.guasto };
+  var stato = {
+    guasto: !!o.guasto,
+    anonimo: o.anonimo === undefined ? true : !!o.anonimo,   // accesso anonimo attivo?
+    regole: o.regole === undefined ? true : !!o.regole       // regole pubblicate?
+  };
 
   /* Lo stesso slug delle regole: minuscolo, spazi in trattini. Nient'altro —
      le regole di Firebase hanno solo toLowerCase e replace, e se il client
@@ -126,6 +130,9 @@ function creaFintoFirebase(opzioni) {
 
     if (url.indexOf('identitytoolkit.googleapis.com') >= 0) {
       if (q.key !== CHIAVE) return errore(400, 'API key not valid');
+      /* Con Authentication mai inizializzato Firebase risponde così, ed è
+         l'errore che è comparso davvero alla prima accensione. */
+      if (!stato.anonimo) return errore(400, 'CONFIGURATION_NOT_FOUND');
       return risposta(200, nuovoUtente());
     }
     if (url.indexOf('securetoken.googleapis.com') >= 0) {
@@ -137,6 +144,9 @@ function creaFintoFirebase(opzioni) {
       return risposta(200, { id_token: tok, refresh_token: corpo.refresh_token, user_id: uid, expires_in: '3600' });
     }
     if (url.indexOf(URL_DB) !== 0) return errore(404, 'non previsto dal finto: ' + url);
+
+    // database in «modalità bloccata»: le regole di partenza rifiutano tutto
+    if (!stato.regole) return errore(401, 'Permission denied');
 
     var percorso = url.slice(URL_DB.length).split('?')[0].replace(/^\/+/, '').replace(/\.json$/, '');
     var parti = percorso.split('/');
@@ -167,6 +177,8 @@ function creaFintoFirebase(opzioni) {
     url: URL_DB,
     chiave: CHIAVE,
     guasto: function (v) { stato.guasto = !!v; },
+    anonimo: function (v) { stato.anonimo = !!v; },
+    regole: function (v) { stato.regole = !!v; },
     slug: slugDiNome
   };
 }

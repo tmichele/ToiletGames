@@ -37,6 +37,7 @@ TG.nuvola = (function () {
   var QUANTI = 10;             // righe di classifica globale
   var MARGINE_TOKEN = 60000;   // si rinnova un minuto prima della scadenza
   var TETTO_PUNTI = 10000000;  // oltre è per forza spazzatura (vedi le regole)
+  var PROVA = '__prova';       // collezione vuota usata per capire se si può leggere
 
   /* ---------- configurazione ---------- */
 
@@ -100,10 +101,45 @@ TG.nuvola = (function () {
 
   /* ---------- chiamate ---------- */
 
+  /* Gli errori di Firebase arrivano in codice: CONFIGURATION_NOT_FOUND,
+     Permission denied, API key not valid. A chi gioca non dicono niente, e a
+     chi ha montato il progetto dicono qualcosa solo dopo una ricerca. Qui
+     diventano la frase che indica il rimedio, con il codice originale fra
+     parentesi per chi deve cercarlo davvero.
+
+     Non è una decorazione: CONFIGURATION_NOT_FOUND, il primo errore comparso
+     accendendo la classifica per davvero, vuol dire una cosa sola — in
+     Authentication non è mai stato premuto «Inizia» — e il messaggio crudo
+     lascia a indovinare fra la chiave, l'indirizzo e le regole. */
+  var SPIEGAZIONI = [
+    [/CONFIGURATION_NOT_FOUND|OPERATION_NOT_ALLOWED|ADMIN_ONLY_OPERATION/,
+      'l\'accesso anonimo non è attivo sul progetto Firebase ' +
+      '(Authentication → Inizia → Metodo di accesso → Anonimo)'],
+    [/API key not valid|API_KEY_INVALID|INVALID_API_KEY|keyInvalid/,
+      'la chiave web del progetto non è quella giusta'],
+    [/Index not defined|indexOn/,
+      'nelle regole del database manca l\'indice ".indexOn": "punti"'],
+    [/TOKEN_EXPIRED|USER_DISABLED|INVALID_REFRESH_TOKEN|INVALID_ID_TOKEN/,
+      'la sessione anonima non vale più: ricarica la pagina'],
+    [/Permission denied/,
+      'il database ha rifiutato l\'operazione: controlla di aver pubblicato le regole'],
+    [/404|Not Found/,
+      'l\'indirizzo del database non risponde: controlla la regione']
+  ];
+
+  function spiega(grezzo) {
+    for (var i = 0; i < SPIEGAZIONI.length; i++) {
+      if (SPIEGAZIONI[i][0].test(grezzo)) return SPIEGAZIONI[i][1] + ' (' + grezzo + ')';
+    }
+    return grezzo;
+  }
+
   function erroreDa(stato, dati, testo) {
     var m = (dati && dati.error && (dati.error.message || dati.error)) || testo || ('HTTP ' + stato);
-    var e = new Error(String(m));
+    var grezzo = String(m);
+    var e = new Error(spiega(grezzo));
     e.stato = stato;
+    e.codice = grezzo;
     return e;
   }
 
@@ -256,11 +292,24 @@ TG.nuvola = (function () {
         body: JSON.stringify(ses.uid)
       }, function (err2) {
         if (err2) {
-          // 401/403 dal database: lo slug è di qualcun altro
+          /* Un 403 scrivendo il nome vuol dire due cose opposte: lo slug è di
+             un altro (e allora basta cambiarlo), oppure le regole non sono mai
+             state pubblicate e il database rifiuta tutto (e allora cambiare
+             nome non servirà mai). Dirlo a caso manderebbe chi gioca a
+             provarne venti. La differenza si misura: la classifica è
+             pubblicamente leggibile *per regola*, quindi se non si riesce
+             nemmeno a leggerla il problema sono le regole. */
           if (err2.stato === 401 || err2.stato === 403) {
-            var e = new Error('«' + pulito + '» è già di un altro giocatore: scegline un altro');
-            e.preso = true;
-            cb(e);
+            chiama(nodo('punteggi/' + PROVA, null, null), { method: 'GET' }, function (err3) {
+              if (err3 && (err3.stato === 401 || err3.stato === 403)) {
+                cb(new Error('le regole del database non sono state pubblicate: ' +
+                  'il database rifiuta anche di farsi leggere'));
+                return;
+              }
+              var e = new Error('«' + pulito + '» è già di un altro giocatore: scegline un altro');
+              e.preso = true;
+              cb(e);
+            });
             return;
           }
           cb(err2);
